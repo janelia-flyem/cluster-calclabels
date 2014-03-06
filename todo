@@ -1,0 +1,11 @@
+-finish ?! implementation
+
+curl -X POST http://emdata1/api/dataset/339/new/keyvalue/classifiers
+curl -X POST http://emdata1/api/node/339/classifiers
+
+-allow user to specify result directory, create directory upon start
+-make python script (drmaa + orchestration + dvid fetching + dvid writing?) (try to make reusable)
+-make new gala wrapper (label offset, dvid fall-through, etc) (eventual rest interface)
+-make neuroproof overlap command (eventual rest interface)
+-dvid writing utility?
+
