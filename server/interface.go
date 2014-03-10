@@ -71,7 +71,7 @@ title: Cluster Calculate Labels
                     "type": "string"
                   }
                 },
-                "required" : ["result-callback"
+                "required" : ["result-callback"]
                 }
               }
 /interface/interface.raml:

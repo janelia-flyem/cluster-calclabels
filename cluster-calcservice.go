@@ -20,7 +20,7 @@ var (
 const helpMessage = `
 Launches service that computes a label volume over a region using a compute cluster.
 
-Usage: adderexample
+Usage: adderexample <data-directory>
       -proxy    (string)        Server and port number for proxy address of cluster-calclabels
       -registry (string)        Server and port number for registry address of serviceproxy
       -port     (number)        Port for HTTP server
@@ -36,11 +36,17 @@ func main() {
 		os.Exit(0)
 	}
 
+	if flag.NArg() != 1 {
+		fmt.Println("Must provide a directory for temporary segmentation data")
+		fmt.Println(helpMessage)
+		os.Exit(0)
+	}
+
 	if *registry != "" {
 		// creates adder service and points to first argument
 		serfagent := register.NewAgent("calcoverlap", *portNum)
 		serfagent.RegisterService(*registry)
 	}
 
-	overlap.Serve(*proxy, *portNum)
+	overlap.Serve(*proxy, *portNum, flag.Arg(0))
 }
