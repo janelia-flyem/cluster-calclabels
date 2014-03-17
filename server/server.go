@@ -182,7 +182,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	calcLabels(w, json_data)
 }
 
-// calcLabels starts the cluster job for calculating labels and writes back results
+// calcLabels starts the cluster job for calculating labels and writes back results (assumes grayscale8 is in a datatype called grayscale
 func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	// convert schema to json data
 	var schema_data interface{}
@@ -199,6 +199,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 
 	// retrieve dvid server
 	dvidserver, err := getDVIDserver(json_data)
+	json_data["dvid-server"] = dvidserver
 	if err != nil {
 		badRequest(w, "DVID server could not be located on proxy")
 		return
@@ -247,7 +248,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 		json_data["job-size"] = 500
 	}
 	if _, found := json_data["overlap-size"]; !found {
-		json_data["job-size"] = 40
+		json_data["overlap-size"] = 40
 	}
 
 	// write status in key value on DVID
@@ -266,7 +267,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	jsonbytes, _ := json.Marshal(jsond_data)
 	config_loc := session_dir + "config.json"
 	ioutil.WriteFile(config_loc, jsonbytes, 0644)
-	go exeCommand(config_loc)
+	go exeCommand(session_dir)
 
 	// dump json callback
 	w.Header().Set("Content-Type", "application/json")

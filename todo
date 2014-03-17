@@ -1,5 +1,45 @@
+??s:
+
+-set environment for qsub jobs
+-set qsub params as appropriate
+
+
+
 -make python script (drmaa + orchestration + dvid fetching + dvid writing?) (try to make reusable, add a hack wait of 3 seconds per call for now)
 -make new gala wrapper (label offset, dvid fall-through, etc) (eventual rest interface)
 -make neuroproof overlap command (eventual rest interface)
--dvid writing utility?
+-make dvid relabeler/rewriter (python script)
 
+
+segmentation cluster service:
+
+-inputs: ROIs (regions), overlap amount, boundary buffer, classifier(s) (other inputs), segmentation tool (service name?), graph service name?
+-action: orchestration of segmentation sub-calls, automatic stitching, construct graph?
+-output: label volume
+
+coding:
+
+ 
+-front-end service: take ROI, split into blocks, launch blocks with 3 second delay, unique segmentation name (the actual service might be implemented in a separate python or go program that can run on the cluster)
+-gala: take global coordinates, take global label offset, call modified ilastik, generate watershed, write out h5 properly relabeled
+-make neuroproof code for stitching
+                                                                                                                                                                                                                   
+stitching:  
+
+1.  Manager will give a pair of overlapping blocks (implicit global coordinates from block number)
+2.  Modify neuroproof to take in two blocks
+3.  Mark all bodies on the relevant boundary line
+4.  Carve out zone (40 pixels swathe?)
+5.  Find overlaps in zone??
+6.  Record body mergers that should occur in a hash
+7.  Dump hash to log file (using global block ids)
+8.  When all nodes are finished, consolidate logs into one master label to label map (use smallest label)
+9.  Launch jobs for each substack to relabel based on mappings, write-out binary corresponding to core area based on global coordinates
+10.  Write blocks one at a time using main thread
+
+
+overlap:
+
+1.  First algorithm should write out potential overlaps; this should be processed by global consolidator into a list that can be examined later
+2.  Near 100% is an automatic merge (make dilated edges and check for 100% subsuming, little dots that are removed by this should probably be automatically absorbed into largest overlap site)
+3.  If no merge candidate is found, try to do connected components, merge to max overlap case?? -- print them out for now

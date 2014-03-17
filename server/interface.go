@@ -55,7 +55,7 @@ title: Cluster Calculate Labels
                 "default": "simp-watershed"
               }
             },
-            "required" : ["label-name", "uuid", "bbox1", "bbox2", "classifier", "label-engine"]
+            "required" : ["label-name", "uuid", "bbox1", "bbox2", "classifier"]
           }
     responses:
       200:
