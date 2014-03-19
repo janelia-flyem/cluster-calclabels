@@ -19,14 +19,14 @@ Basic Algorithm
 """
 
 # assumed constants
-classifierName = "classifer.ilp"
+classifierName = "classifier.ilp"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 
 
 # hold all options for command
 class CommandOptions:
-    def init(self, config_data, session_location):
+    def __init__(self, config_data, session_location):
         self.session_location = session_location
         self.classifier = session_location + "/" + classifierName
         self.callback = config_data["result-callback"] 
@@ -48,7 +48,7 @@ def num_divs(total_span, substack_span, min_allowed):
     return num
 
 class Bbox:
-    def init(self, x1, y1, z1, x2, y2, z2):
+    def __init__(self, x1, y1, z1, x2, y2, z2):
         self.x1 = x1
         self.y1 = y1
         self.z1 = z1
@@ -56,8 +56,8 @@ class Bbox:
         self.y2 = y2
         self.z2 = z2
 
-class Subtack:
-    def init(self, substackid, main_region, boundbuffer):
+class Substack:
+    def __init__(self, substackid, main_region, boundbuffer):
         self.roi = main_region
         self.border = boundbuffer
         self.substackid = substackid
@@ -65,14 +65,15 @@ class Subtack:
     # create working directory
     def create_directory(self, basepath):
         self.session_location = basepath + "/" + str(self.substackid)
-        os.makedirs(self.session_location)
+        if not os.path.exists(self.session_location):
+            os.makedirs(self.session_location)
 
     # write out configuration json and launch job
     def launch_label_job(self, cluster_session, config):
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
-        fout = open(self.session_location, 'w')
+        fout = open(self.session_location + "/config.json", 'w')
         fout.write(json.dumps(config, indent=4))
         fout.close()
         
@@ -93,8 +94,8 @@ def orchestrate_labeling(options):
 
     # make sure substacks are not smaller than this size in one dimension
     smallest_allowed = 50
-    if self.overlap_size > smallest_allowed:
-        smallest_allowed = self.overlap_size
+    if options.overlap_size > smallest_allowed:
+        smallest_allowed = options.overlap_size
 
     # find extents of stack (inclusive)
     x1, x2 = options.bbox1[0], options.bbox2[0]
@@ -123,23 +124,23 @@ def orchestrate_labeling(options):
     for x in range(0, xnum):
         for y in range(0, ynum):
             for z in range(0, znum):
-                startx = x * options.job_size
-                finishx = (x+1) * options.job_size
+                startx = x * options.job_size + x1
+                finishx = (x+1) * options.job_size + x1
                 if x == (xnum-1):
                     finishx = x2
-                starty = y * options.job_size
-
-                finishy = (y+1) * options.job_size
+                
+                starty = y * options.job_size + y1
+                finishy = (y+1) * options.job_size + y1
                 if y == (ynum-1):
                     finishy = y2
                 
-                startz = z * options.job_size
-                finishz = (z+1) * options.job_size
+                startz = z * options.job_size + z1
+                finishz = (z+1) * options.job_size + z1
                 if z == (znum-1):
                     finishz = z2
 
                 roi = Bbox(startx, starty, startz, finishx, finishy, finishz)  
-                substacks.append(Substack(substackid, roi, options.overlap_size/2)
+                substacks.append(Substack(substackid, roi, options.overlap_size/2))
                 substackid += 1 
 
     # load default config
@@ -150,7 +151,7 @@ def orchestrate_labeling(options):
 
     # create drmaa session (wait for all jobs to finish for now)
     cluster_session = drmaa.Session()
-
+    cluster_session.initialize()
     job_ids = []
     for substack in substacks:
         substack.create_directory(options.session_location)
@@ -172,8 +173,7 @@ def orchestrate_labeling(options):
     
     
     # create label name type
-    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid +
-            "/new/labels64/" + options.labelname
+    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
     requests.post(dataset_name, data='{}', headers=json_header) 
     
     
@@ -181,10 +181,11 @@ def orchestrate_labeling(options):
 
     # write status: 'finished'
     requests.post(options.callback, data='{"status": "finished"}', headers=json_header)
+    cluster_session.exit()
    
 #parses information in config json, assume classifier and json location given directory
 def main(args):
-    parser = ArgumentParser(description="Orchestrate map/reduce-like segmentation jobs")
+    parser = argparse.ArgumentParser(description="Orchestrate map/reduce-like segmentation jobs")
     parser.add_argument('session_location', type=str, help="Location of directory that contains classifier and configuration json")
     args = parser.parse_args()
 
