@@ -78,8 +78,11 @@ class Subtack:
         
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
-        jt.remoteCommand = watershedExe 
-        jt.args = [self.session_location]
+        jt.remoteCommand = watershedExe
+
+        # use current environment, use all slots for Ilastik
+        jt.nativeSpecification = "-pe batch 16 -j y -o /dev/null -b y -cwd -V"
+        jt.args = [self.session_location, "--config-file", self.session_location + "/config.json"]
         return cluster_session.runJob(jt)
 
 def orchestrate_labeling(options):
