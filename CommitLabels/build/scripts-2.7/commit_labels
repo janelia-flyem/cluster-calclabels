@@ -1,0 +1,11 @@
+#!/home/plazas/buildem_drmaa/buildem/bin/python
+
+from commit_labels import commit_labels
+import sys
+
+def main(argv):
+    commit_labels.execute(argv)
+
+if __name__ == "__main__":
+    main(sys.argv)
+

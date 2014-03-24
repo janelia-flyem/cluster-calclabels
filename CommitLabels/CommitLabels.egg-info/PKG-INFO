@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: CommitLabels
+Version: 1.0
+Summary: CommitLabels is a utility for writing an h5 label volume to DVID with optional parameters for remapping the labels.
+Home-page: UNKNOWN
+Author: Stephen Plaza
+Author-email: plazas@janelia.hhmi.org
+License: LICENSE.txt
+Description: UNKNOWN
+Platform: UNKNOWN

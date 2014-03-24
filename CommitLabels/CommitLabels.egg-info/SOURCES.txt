@@ -1,0 +1,8 @@
+setup.py
+CommitLabels.egg-info/PKG-INFO
+CommitLabels.egg-info/SOURCES.txt
+CommitLabels.egg-info/dependency_links.txt
+CommitLabels.egg-info/top_level.txt
+bin/commit_labels
+commit_labels/__init__.py
+commit_labels/commit_labels.py
