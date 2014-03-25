@@ -1,4 +1,8 @@
+#!/usr/bin/env python
+
 #assume the environment is set properly by the service
+
+from orchestration import calclabels_cluster
 
 import drmaa
 import sys
@@ -11,8 +15,8 @@ jt = s.createJobTemplate()
 jt.nativeSpecification = "-j y -o /dev/null -b y -cwd -V"
 
 # run python command for calclabels_cluster with the session as the argument
-jt = remoteCommand("python")
-jt.args = ["calclabels_cluster.py", sys.argv[1]]
+jt = remoteCommand("calclabels_cluster")
+jt.args = [sys.argv[1]]
 
 # run on only one slot
 jobid = s.runJob(jt)

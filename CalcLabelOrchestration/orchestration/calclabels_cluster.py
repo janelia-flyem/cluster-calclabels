@@ -221,7 +221,7 @@ def orchestrate_labeling(options):
     cluster_session.exit()
    
 #parses information in config json, assume classifier and json location given directory
-def main(args):
+def execute(args):
     parser = argparse.ArgumentParser(description="Orchestrate map/reduce-like segmentation jobs")
     parser.add_argument('session_location', type=str, help="Location of directory that contains classifier and configuration json")
     args = parser.parse_args()
@@ -230,7 +230,4 @@ def main(args):
      
     options = CommandOptions(config_data, args.session_location)
     orchestrate_labeling(options) 
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))
 
