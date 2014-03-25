@@ -4,6 +4,7 @@ import sys
 import json
 import requests
 import drmaa
+import time
 
 """
 Basic Algorithm
@@ -22,6 +23,7 @@ Basic Algorithm
 classifierName = "classifier.ilp"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
+commitLabels = "commit_labels"
 
 
 # hold all options for command
@@ -85,6 +87,27 @@ class Substack:
         jt.nativeSpecification = "-pe batch 16 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location, "--config-file", self.session_location + "/config.json"]
         return cluster_session.runJob(jt)
+
+    def launch_write_job(self, cluster_session, config):
+        config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
+        config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
+        config["border"] = self.border
+        config["labels"] = self.session_location + "/supervoxels.h5"
+        fout = open(self.session_location + "/configw.json", 'w')
+        fout.write(json.dumps(config, indent=4))
+        fout.close()
+
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = commitLabels 
+
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = [self.session_location + "/configw.json"]
+        return cluster_session.runJob(jt)
+
+
+
 
 def orchestrate_labeling(options):
     json_header = {'content-type': 'application/json'}  
@@ -157,6 +180,7 @@ def orchestrate_labeling(options):
         substack.create_directory(options.session_location)
         # spawn cluster job -- return handler?
         job_ids.append(substack.launch_label_job(cluster_session, config))
+        time.sleep(1)
 
     # wait for job completion
     cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
@@ -176,8 +200,21 @@ def orchestrate_labeling(options):
     dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
     requests.post(dataset_name, data='{}', headers=json_header) 
     
-    
-    #?! launch relabel and write jobs and wait !!
+    # launch relabel and write jobs and wait 
+    config = {}
+    config["offset"] = 0 # ?! set accordingly
+    config["remap"] = "" # ?! set accordingly
+    config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
+
+    job_ids = []
+    for substack in substacks:
+        substack.create_directory(options.session_location)
+        # spawn cluster job
+        job_ids.append(substack.launch_write_job(cluster_session, config))
+        time.sleep(1)
+
+    # wait for job completion
+    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
 
     # write status: 'finished'
     requests.post(options.callback, data='{"status": "finished"}', headers=json_header)
