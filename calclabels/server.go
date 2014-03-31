@@ -1,9 +1,9 @@
 package calclabels
 
 import (
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
+	"time"
+        "fmt"
 	"github.com/sigu-399/gojsonschema"
 	"io/ioutil"
 	"math/rand"
@@ -19,15 +19,25 @@ import (
 const (
 	// Contain URI location for interface
 	interfacePath  = "/interface/"
-	calclabelpPath = "/calculation/"
+	calclabelsPath = "/calculation/"
 	classifierURI  = "classifiers/"
 	classifierName = "classifier.ilp"
 	segStatusURI   = "calclabelstatus"
-	clusterScript  = "ssh plazas@login2 calclabels"
+	clusterScript  = "calclabels"
 )
 
-// ?! Directory containing temporary results from segmentation (root + /.calclabels/)
+// Directory containing temporary results from segmentation (root + /.calclabels/)
 var resultDirectory string
+
+// machine where clusterscript is installed
+var remoteMachine string
+
+// user for remote program
+var remoteUser string
+
+// environment for remote command
+var remoteEnv []string
+
 
 // Address for proxy server
 var proxyServer string
@@ -162,19 +172,19 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	var bbox1_list []interface{}
 	var bbox2_list []interface{}
 
-	bbox1_str := strings.Split(bodies, ",")
-	bbox2_str := strings.Split(bodies, ",")
-	for _, _coord_str := range bbox1_str {
+	bbox1_str := strings.Split(bbox1, ",")
+	bbox2_str := strings.Split(bbox2, ",")
+	for _, coord_str := range bbox1_str {
 		coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
 		bbox1_list = append(bbox1_list, float64(coord))
 	}
-	for _, _coord_str := range bbox2_str {
+	for _, coord_str := range bbox2_str {
 		coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
 		bbox2_list = append(bbox2_list, float64(coord))
 	}
 
-	json_data["bbox1"] = body_list
-	json_data["bbox2"] = body_list
+	json_data["bbox1"] = bbox1_list
+	json_data["bbox2"] = bbox2_list
 
 	json_data["classifier"] = r.FormValue("classifier")
 	json_data["label-name"] = r.FormValue("labelname")
@@ -186,7 +196,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	// convert schema to json data
 	var schema_data interface{}
-	json.Unmarshal([]byte(schemaData), &schema_data)
+	json.Unmarshal([]byte(calclabelsSchema), &schema_data)
 
 	// validate json schema
 	schema, err := gojsonschema.NewJsonSchemaDocument(schema_data)
@@ -212,7 +222,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	baseurl := dvidserver + "/api/node/" + uuid + "/"
 
 	// must create random session id
-	session_id = randomHex()
+	session_id := randomHex()
 
 	// grab a timestamp (could overflow but is just used for a unique stamp)
 	tstamp := int(time.Now().Unix())
@@ -226,19 +236,19 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	}
 
 	// must read classifier and dump to session
-	classifier = json_data["classifier"].(string)
+	classifier := json_data["classifier"].(string)
 	classifier_url := baseurl + classifierURI + classifier
 
 	// dump classifier to disk under session id (default to specified directory)
 	resp, err := http.Get(classifier_url)
 	if err != nil || resp.StatusCode != 200 {
-		badRequet(w, "Classifier could not be read from "+classifier_url)
+		badRequest(w, "Classifier could not be read from "+classifier_url)
 		return
 	}
 	defer resp.Body.Close()
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		badRequet(w, "Classifier could not be read from "+classifier_url)
+		badRequest(w, "Classifier could not be read from "+classifier_url)
 		return
 	}
 	ioutil.WriteFile(session_dir+classifierName, bytes, 0644)
@@ -252,19 +262,19 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	}
 
 	// write status in key value on DVID
-	keyval_url = baseurl + segStatusURI + "/" + session_id
+	keyval_url := baseurl + segStatusURI + "/" + session_id
 	json_data["result-callback"] = keyval_url
 
 	// create segstatus uri (if not created) and write status
 	payload := `{}`
 	payload_rdr := strings.NewReader(payload)
-	http.Post(dvidserver+"/api/dataset/"+uuid+"/new/keyvalue/"+segStatus, "application/json", payload_rdr)
+	http.Post(dvidserver+"/api/dataset/"+uuid+"/new/keyvalue/"+segStatusURI, "application/json", payload_rdr)
 	payload = `{"status" : "not started"}`
 	payload_rdr = strings.NewReader(payload)
 	http.Post(keyval_url, "application/json", payload_rdr)
 
 	// write json to session folder, call cluster script with directory location
-	jsonbytes, _ := json.Marshal(jsond_data)
+	jsonbytes, _ := json.Marshal(json_data)
 	config_loc := session_dir + "config.json"
 	ioutil.WriteFile(config_loc, jsonbytes, 0644)
 	go exeCommand(session_dir)
@@ -279,12 +289,24 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 
 // exeCommand wraps call to external program that runs on the cluster
 func exeCommand(config_loc string) {
-	exec.Command(clusterScript, config_loc).Output()
+        if remoteMachine == "" {
+	        exec.Command(clusterScript, config_loc).Output()
+        } else {
+                var argument_str string
+                for _, envvar := range remoteEnv {
+                        // assume shell allows for export of variables
+                        argument_str += "export " + envvar + "; "                        
+                } 
+                argument_str += (clusterScript + " " + config_loc)
+                fmt.Println(argument_str)
+	        exec.Command("ssh", remoteUser + "@" + remoteMachine, argument_str).Output()
+        }
+
 }
 
 // overlapHandler handles post request to "/service"
 func calclabelsHandler(w http.ResponseWriter, r *http.Request) {
-	pathlist, requestType, err := parseURI(r, overlapPath)
+	pathlist, requestType, err := parseURI(r, calclabelsPath)
 	if err != nil || len(pathlist) != 0 {
 		badRequest(w, "Error: incorrectly formatted request")
 		return
@@ -303,9 +325,28 @@ func calclabelsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Serve is the main server function call that creates http server and handlers
-func Serve(proxyserver string, port int, directory String) {
+func Serve(proxyserver string, port int, config_file string, directory string) {
 	resultDirectory = directory
 	proxyServer = proxyserver
+
+        // read and parse configuration file
+        config_handle, _ := os.Open(config_file)
+        decoder := json.NewDecoder(config_handle)
+	config_data := make(map[string]interface{})
+        decoder.Decode(&config_data)
+        config_handle.Close()
+       
+        remoteMachine = "" 
+        if mach, found := config_data["remote-machine"]; found {
+            remoteMachine = mach.(string)
+        }
+        remoteUser = "" 
+        if ruser, found := config_data["remote-user"]; found {
+            remoteUser = ruser.(string)
+        }
+        if renv, found := config_data["remote-environment"]; found {
+            remoteEnv = renv.([]string)
+        }
 
 	hname, _ := os.Hostname()
 	webAddress = hname + ":" + strconv.Itoa(port)
@@ -326,9 +367,6 @@ func Serve(proxyserver string, port int, directory String) {
 
 	// perform calclabel service
 	http.HandleFunc(calclabelsPath, calclabelsHandler)
-
-	// perform bodystats service
-	http.HandleFunc(bodystatsPath, bodystatsHandler)
 
 	// exit server if user presses Ctrl-C
 	go func() {

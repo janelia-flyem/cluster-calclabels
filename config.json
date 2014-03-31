@@ -1,0 +1,10 @@
+{
+    "remote-machine": "login1",
+    "remote-user": "plazas",
+    "remote-environment": [
+        "PATH=/groups/scheffer/home/plazas/segmentation_system/buildem/bin",
+        "PYTHONPATH=/groups/scheffer/home/plazas/segmentation_system/buildem/lib",
+        "LD_LIBRARY_PATH=/groups/scheffer/home/plazas/segmentation_system/buildem/lib"
+        "DRMAA_LIBRARY_PATH=/sge/current/lib/lx-amd64/libdrmaa.so"
+    ]
+}
