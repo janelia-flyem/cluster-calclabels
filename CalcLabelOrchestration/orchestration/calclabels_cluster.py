@@ -43,10 +43,8 @@ class CommandOptions:
 def num_divs(total_span, substack_span, min_allowed):
     num = total_span / substack_span 
     mod = total_span % substack_span
-    if mod != 0:
+    if num == 0 or mod >= min_allowed:
         num += 1
-    if mod < min_allowed:
-        num -= 1
     return num
 
 class Bbox:
@@ -120,7 +118,7 @@ def orchestrate_labeling(options):
     if options.overlap_size > smallest_allowed:
         smallest_allowed = options.overlap_size
 
-    # find extents of stack (inclusive)
+    # find extents of stack -- [min, max)
     x1, x2 = options.bbox1[0], options.bbox2[0]
     if x1 > x2:
         x1, x2 = x2, x1
@@ -131,9 +129,9 @@ def orchestrate_labeling(options):
     if z1 > z2:
         z1, z2 = z2, z1
 
-    xspan = x2 - x1 + 1
-    yspan = y2 - y1 + 1
-    zspan = z2 - z1 + 1 
+    xspan = x2 - x1
+    yspan = y2 - y1
+    zspan = z2 - z1 
 
     # divide into substacks, create custom jsons/directories
     xnum = num_divs(xspan, options.job_size, smallest_allowed)   
@@ -180,7 +178,7 @@ def orchestrate_labeling(options):
         substack.create_directory(options.session_location)
         # spawn cluster job -- return handler?
         job_ids.append(substack.launch_label_job(cluster_session, config))
-        time.sleep(1)
+        time.sleep(3)
 
     # wait for job completion
     cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
@@ -211,7 +209,7 @@ def orchestrate_labeling(options):
         substack.create_directory(options.session_location)
         # spawn cluster job
         job_ids.append(substack.launch_write_job(cluster_session, config))
-        time.sleep(1)
+        time.sleep(3)
 
     # wait for job completion
     cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
@@ -225,6 +223,7 @@ def execute(args):
     parser = argparse.ArgumentParser(description="Orchestrate map/reduce-like segmentation jobs")
     parser.add_argument('session_location', type=str, help="Location of directory that contains classifier and configuration json")
     args = parser.parse_args()
+
 
     config_data = json.load(open(args.session_location + "/" + jsonName))
      

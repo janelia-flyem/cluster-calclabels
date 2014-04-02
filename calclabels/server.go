@@ -228,7 +228,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	tstamp := int(time.Now().Unix())
 	session_id = session_id + "-" + strconv.Itoa(tstamp)
 	session_dir := resultDirectory + session_id + "/"
-	err = os.MkdirAll(session_dir, 0644)
+	err = os.MkdirAll(session_dir, 0755)
 
 	if err != nil {
 		badRequest(w, "No permission to write directory to: "+resultDirectory)
@@ -298,7 +298,6 @@ func exeCommand(config_loc string) {
                         argument_str += "export " + envvar + "; "                        
                 } 
                 argument_str += (clusterScript + " " + config_loc)
-                fmt.Println(argument_str)
 	        exec.Command("ssh", remoteUser + "@" + remoteMachine, argument_str).Output()
         }
 
@@ -326,7 +325,7 @@ func calclabelsHandler(w http.ResponseWriter, r *http.Request) {
 
 // Serve is the main server function call that creates http server and handlers
 func Serve(proxyserver string, port int, config_file string, directory string) {
-	resultDirectory = directory
+	resultDirectory = directory + "/"
 	proxyServer = proxyserver
 
         // read and parse configuration file
@@ -345,7 +344,10 @@ func Serve(proxyserver string, port int, config_file string, directory string) {
             remoteUser = ruser.(string)
         }
         if renv, found := config_data["remote-environment"]; found {
-            remoteEnv = renv.([]string)
+                env_list := renv.([]interface{})
+                for _, envsing := range env_list {
+                        remoteEnv = append(remoteEnv, envsing.(string))
+                }
         }
 
 	hname, _ := os.Hostname()

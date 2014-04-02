@@ -16,7 +16,7 @@ def execute(argv):
     labels = numpy.array(hfile['stack']).astype(numpy.uint64)
 
     # crop labels
-    bufsz = json_data["border"] + 10
+    bufsz = json_data["border"]
     labels = labels[bufsz:-1*bufsz, bufsz:-1*bufsz, bufsz:-1*bufsz]
 
     # remapping is based off of an adjusted set of labels (if necessary)
@@ -50,6 +50,6 @@ def execute(argv):
     labels_bin = struct.pack(labels_data, *labels)
     
     print "Send when post is fixed"
-    #requests.post(write_location, data=labels_bin,
-    #        headers={'content-type': 'application/octet-stream'}) 
+    requests.post(write_location, data=labels_bin,
+            headers={'content-type': 'application/octet-stream'}) 
 

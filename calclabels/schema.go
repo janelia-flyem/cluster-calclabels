@@ -12,6 +12,7 @@ const calclabelsSchema = `
     },
     "label-name": {
       "description": "name of the datatype to store the labels",
+      "type": "string" 
     },
     "uuid": { "type": "string" },
     "bbox1": {
@@ -35,7 +36,7 @@ const calclabelsSchema = `
     },
     "overlap-size": {
       "description": "Pixel overlap between adjacent sub-regions used in stitching (default: 40)",
-      "type": "integer"
+      "type": "integer",
       "default": 40
     },
     "classifier": {
