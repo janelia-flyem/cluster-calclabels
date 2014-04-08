@@ -68,6 +68,61 @@ class Substack:
         if not os.path.exists(self.session_location):
             os.makedirs(self.session_location)
 
+    # assume line[0] < line[1] and add border in calculation 
+    def intersects(self, line1, line2):
+        pt1, pt2 = line1[0], line1[1]
+        pt1 -= self.border
+        pt2 += self.border
+        pt1_2, pt2_2 = line2[0], line2[1]
+        pt1_2 -= self.border
+        pt2_2 += self.border
+        
+        if pt1_2 < pt2 and pt2_2 > pt1:
+            return True
+        return False 
+
+    # returns true if two substacks overlap
+    def isoverlap(self, substack2):
+        linex1 = [self.roi.x1, self.roi.x2]
+        linex2 = [substack2.roi.x1, substack2.roi.x2]
+        liney1 = [self.roi.y1, self.roi.y2]
+        liney2 = [substack2.roi.y1, substack2.roi.y2]
+        linez1 = [self.roi.z1, self.roi.z2]
+        linez2 = [substack2.roi.z1, substack2.roi.z2]
+       
+        # check intersection
+        if intersects(linex1, liney2) and intersects(liney1, liney2) and intersects(linez1, linez2):
+            return True 
+       
+        return False
+
+    # handle gala output for max body id
+    def set_max_id(self, id_offset):
+        self.id_offset = id_offset
+        data = json.load(open(self.session_location + "/max_body.json"))
+        return id_offset + data["max_id"]
+
+
+    # find body mappings
+    def find_mappings(self, merge_list, substacks)
+        if self.id_offset is None:
+            raise "No offset specified"
+       
+        for i in range(self.num_stitch):
+            jname = self.session_location + "/merge_" + str(i) + ".json"
+            merge_data = json.load(open(jname))
+            substack2 = substacks[merge_data["id"]]
+
+            # first body is substack1, second body is substack2
+            # put larger body id first
+            for merge in merge_data["merge_list"]:
+                body1 = merge[0] + self.id_offset
+                body2 = merge[1] + substack2.id_offset
+                if body2 > body1:
+                    body1, body2 = body2, body1
+                merge_list.append([body1, body2])
+
+
     # write out configuration json and launch job
     def launch_label_job(self, cluster_session, config):
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
@@ -86,7 +141,54 @@ class Substack:
         jt.args = [self.session_location, "--config-file", self.session_location + "/config.json"]
         return cluster_session.runJob(jt)
 
+    def touches(self, p1, p2, p1_2, p2_2):
+        if p1 == (p2_2+1) or p2 == (p1_2-1):
+            return True
+        return False
+    
+    # launch substack stitch command
+    def launch_stitch_job(self, substack2, cluster_session):
+        config["bbox1"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z-self.border1]
+        config["bbox2"] = [self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border]
+
+        config["bbox1_2"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z1-self.border]
+        config["bbox2_2"] = [self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border]
+
+        config["labels"] = self.session_location + "/supervoxels.h5"
+        config["labels_2"] = substack2.session_location + "/supervoxels.h5"
+        
+        configname = self.session_location + "/config_stitch" + str(self.num_stitch) + ".json"
+        config["output"] = self.session_location + "/merge_" + str(self.num_stitch) + ".json"
+        config["id"] = substack2.substackid
+
+        # axis where substacks touch, across which bodies need to be examined 
+        axis = ""
+        if touches(self.roi.x1, self.roi.x2, substack2.roi.x1, substack.roi.x2):
+            axis += "x"
+        if touches(self.roi.y1, self.roi.y2, substack2.roi.y1, substack.roi.y2):
+            axis += "y"
+        if touches(self.roi.z1, self.roi.z2, substack2.roi.z1, substack.roi.z2):
+            axis += "z"
+
+        config["overlap-axis"] = axis
+
+        self.num_stitch += 1
+
+        fout = open(configname, 'w')
+        fout.write(json.dumps(config, indent=4))
+        fout.close()
+
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = commitLabels 
+
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = [configname]
+        return cluster_session.runJob(jt)
+
     def launch_write_job(self, cluster_session, config):
+        config["offset"] = self.id_offset
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
@@ -186,22 +288,64 @@ def orchestrate_labeling(options):
     # write status: 'performed watershed'
     requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
     
-    #?! launch reduce jobs and wait
+    # launch reduce jobs and wait
+    job_ids = []
+
+    for i in range(0, len(substacks)-1):
+        for j in range(i+1, len(substacks):
+            if substacks[i].isoverlap(substacks[j]):
+                job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
     
+    # wait for job completion
+    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+
     # write status: 'stitched watershed'
     requests.post(options.callback, data='{"status": "stitched labels"}', headers=json_header)
     
-    #?! collect merges, relabels, etc
+    # collect merges, relabels, etc
+    id_offset = 0
+    merge_list = []
+    for substack in substacks:
+        id_offset = substack.set_max_id(id_offset)
+    for substack in substacks:
+        # find all substack labels that need to be remapped (sets the proper offset)
+        # higher id first
+        substack.find_mappings(merge_list, substacks) 
+
+    # make a body2body map (always map to the lower ID)
+    body1body2 = {}
+    body2body1 = {}
+    for merger in body2body:
+        # body1 -> body2
+        body1 = merger[0]
+        if merger[0] in body1body2:
+            body1 = body1body2[merger[0]]
+        body2 = merger[1]
+        if merger[1] in body1body2:
+            body2 = body1body2[merger[1]]
+
+        if body2 not in body2body1:
+            body2body1[body2] = set()
+        
+        # add body1 to body2 map
+        body2body1[body2]].add(body1)
+        # add body1 -> body2 mapping
+        body1body2[body1] = body2
+
+        if body1 in body2body1:
+            for tbody in body2body1[body1]:
+                body2body1[body2].add(tbody)
+                body1body2[tbody] = body2
     
-    
+    body2body = zip(body1body2.keys(), body1body2.values())
+
     # create label name type
     dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
     requests.post(dataset_name, data='{}', headers=json_header) 
     
     # launch relabel and write jobs and wait 
     config = {}
-    config["offset"] = 0 # ?! set accordingly
-    config["remap"] = "" # ?! set accordingly
+    config["remap"] = body2body 
     config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
 
     job_ids = []
