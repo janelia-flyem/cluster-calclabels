@@ -7,10 +7,10 @@ import requests
 
 # compute overlap -- assume first point is less than second
 def intersects(pt1, pt2, pt1_2, pt2_2):
-    if pt2 > pt1:
-        raise Exception("point 2 greater than point 1")
-    if pt2_2 > pt1_1:
-        raise Exception("point 2 greater than point 1")
+    if pt1 > pt2:
+        raise Exception("point 1 greater than point 2")
+    if pt1_2 > pt2_1:
+        raise Exception("point 1 greater than point 2")
 
     val1 = max(pt1, pt1_2)
     val2 = min(pt2, pt2_2)
@@ -42,7 +42,7 @@ def execute(argv):
     offz1, offz2, offz1_2, offz2_2 = intersects(bbz1, bbz2, bbz1_2, bbz2_2)
         
     labels1 = numpy.array(hfile['stack'][offz1:offz2, offy1:offy2, offx1:offx2])
-    labels2= numpy.array(hfile2['stack'][offz1:offz2_2, offy1:offy2_2, offx1:offx2_2])
+    labels2= numpy.array(hfile2['stack'][offz1_2:offz2_2, offy1_2:offy2_2, offx1_2:offx2_2])
 
     # determine list of bodies in play
     z2, y2, x2 = labels2.shape()
@@ -58,10 +58,8 @@ def execute(argv):
         z1 /= 2 
         z2 = z1 + 1
     eligible_bodies = set(numpy.unique(labels2[z1:z2, y1:y2, x1:x2]))
-    body2body1 = {}
-    body2body2 = {}
+    body2body = {}
 
-    label1_bodies = numpy.unique(labels1)
     label2_bodies = numpy.unique(labels1)
     
     for body in label2_bodies:
@@ -74,11 +72,11 @@ def execute(argv):
 
     # create merge list 
     merge_list = []
-    for body2, bodydict in body2body:
+    for body2, bodydict in body2body.items():
         if body2 in eligible_bodies:
             bodysave = -1
             max_val = 0
-            for body1, val in bodydict:
+            for body1, val in bodydict.items():
                 if val > max_val:
                     bodysave = body1
                     max_val = val

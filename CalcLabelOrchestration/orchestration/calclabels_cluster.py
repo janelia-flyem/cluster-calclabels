@@ -24,6 +24,7 @@ classifierName = "classifier.ilp"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 commitLabels = "commit_labels"
+stitchLabels = "stitch_labels"
 
 
 # hold all options for command
@@ -180,7 +181,7 @@ class Substack:
 
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
-        jt.remoteCommand = commitLabels 
+        jt.remoteCommand = stitchLabels 
 
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
