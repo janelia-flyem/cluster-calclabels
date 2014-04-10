@@ -9,7 +9,7 @@ import requests
 def intersects(pt1, pt2, pt1_2, pt2_2):
     if pt1 > pt2:
         raise Exception("point 1 greater than point 2")
-    if pt1_2 > pt2_1:
+    if pt1_2 > pt2_2:
         raise Exception("point 1 greater than point 2")
 
     val1 = max(pt1, pt1_2)
@@ -40,12 +40,12 @@ def execute(argv):
     offx1, offx2, offx1_2, offx2_2 = intersects(bbx1, bbx2, bbx1_2, bbx2_2)
     offy1, offy2, offy1_2, offy2_2 = intersects(bby1, bby2, bby1_2, bby2_2)
     offz1, offz2, offz1_2, offz2_2 = intersects(bbz1, bbz2, bbz1_2, bbz2_2)
-        
+    
     labels1 = numpy.array(hfile['stack'][offz1:offz2, offy1:offy2, offx1:offx2])
     labels2= numpy.array(hfile2['stack'][offz1_2:offz2_2, offy1_2:offy2_2, offx1_2:offx2_2])
 
     # determine list of bodies in play
-    z2, y2, x2 = labels2.shape()
+    z2, y2, x2 = labels2.shape
     z1 = y1 = x1 = 0 
     
     if 'x' in json_data["overlap-axis"]:
@@ -60,14 +60,16 @@ def execute(argv):
     eligible_bodies = set(numpy.unique(labels2[z1:z2, y1:y2, x1:x2]))
     body2body = {}
 
-    label2_bodies = numpy.unique(labels1)
+    label2_bodies = numpy.unique(labels2)
     
     for body in label2_bodies:
         body2body[body] = {}
 
     # traverse volume to find maximum overlap
     for (z,y,x), body1 in numpy.ndenumerate(labels1):
-        body2 = labels2[z,y,z]
+        body2 = labels2[z,y,x]
+        if body1 not in body2body[body2]:
+            body2body[body2][body1] = 0
         body2body[body2][body1] += 1
 
     # create merge list 
@@ -80,13 +82,14 @@ def execute(argv):
                 if val > max_val:
                     bodysave = body1
                     max_val = val
-            merge_list.append([bodysave, body2])
+            merge_list.append([int(bodysave), int(body2)])
    
     # output json
     outjson = {}
     outjson["id"] = json_data["id"]
-    outjson["merge_list"] = merge_list 
-    
+    outjson["merge_list"] = merge_list
+  
     fout = open(json_data["output"], 'w')
-    fout.write(json.dumps(outjson, indent=4))
+    jstr = json.dumps(outjson, indent=4)
+    fout.write(jstr)
 

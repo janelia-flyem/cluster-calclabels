@@ -105,7 +105,7 @@ class Substack:
 
 
     # find body mappings
-    def find_mappings(self, merge_list, substacks)
+    def find_mappings(self, merge_list, substacks):
         if self.id_offset is None:
             raise "No offset specified"
        
@@ -293,7 +293,7 @@ def orchestrate_labeling(options):
     job_ids = []
 
     for i in range(0, len(substacks)-1):
-        for j in range(i+1, len(substacks):
+        for j in range(i+1, len(substacks)):
             if substacks[i].isoverlap(substacks[j]):
                 job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
     
@@ -329,7 +329,7 @@ def orchestrate_labeling(options):
             body2body1[body2] = set()
         
         # add body1 to body2 map
-        body2body1[body2]].add(body1)
+        body2body1[body2].add(body1)
         # add body1 -> body2 mapping
         body1body2[body1] = body2
 
