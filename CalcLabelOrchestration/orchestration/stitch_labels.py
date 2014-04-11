@@ -72,6 +72,8 @@ def execute(argv):
             body2body[body2][body1] = 0
         body2body[body2][body1] += 1
 
+    already_merged = set()
+
     # create merge list 
     merge_list = []
     for body2, bodydict in body2body.items():
@@ -82,8 +84,36 @@ def execute(argv):
                 if val > max_val:
                     bodysave = body1
                     max_val = val
+            already_merged.add(int(bodysave))
             merge_list.append([int(bodysave), int(body2)])
-   
+  
+
+    eligible_bodies = set(numpy.unique(labels1[z1:z2, y1:y2, x1:x2]))
+    body2body = {}
+    label1_bodies = numpy.unique(labels1)
+    for body in label1_bodies:
+        body2body[body] = {}
+
+    # traverse volume to find maximum overlap
+    for (z,y,x), body1 in numpy.ndenumerate(labels1):
+        body2 = labels2[z,y,x]
+        if body2 not in body2body[body1]:
+            body2body[body1][body2] = 0
+        body2body[body1][body2] += 1
+
+    # add to merge list 
+    for body1, bodydict in body2body.items():
+        if body1 in eligible_bodies and body1 not in already_merged:
+            bodysave = -1
+            max_val = 0
+            for body2, val in bodydict.items():
+                if val > max_val:
+                    bodysave = body2
+                    max_val = val
+            merge_list.append([int(body1), int(bodysave)])
+
+
+
     # output json
     outjson = {}
     outjson["id"] = json_data["id"]

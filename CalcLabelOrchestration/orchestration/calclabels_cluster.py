@@ -282,7 +282,7 @@ def orchestrate_labeling(options):
     for substack in substacks:
         substack.create_directory(options.session_location)
         # spawn cluster job -- return handler?
-        #job_ids.append(substack.launch_label_job(cluster_session, config))
+        job_ids.append(substack.launch_label_job(cluster_session, config))
         time.sleep(3)
 
     # wait for job completion
@@ -343,7 +343,7 @@ def orchestrate_labeling(options):
     body2body = zip(body1body2.keys(), body1body2.values())
 
     # create label name type
-    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/grayscale8/" + options.labelname
+    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
     requests.post(dataset_name, data='{}', headers=json_header) 
     
     # launch relabel and write jobs and wait 
