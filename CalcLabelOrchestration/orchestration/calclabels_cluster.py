@@ -62,6 +62,7 @@ class Substack:
         self.roi = main_region
         self.border = boundbuffer
         self.substackid = substackid
+        self.num_stitch = 0
 
     # create working directory
     def create_directory(self, basepath):
@@ -92,7 +93,7 @@ class Substack:
         linez2 = [substack2.roi.z1, substack2.roi.z2]
        
         # check intersection
-        if intersects(linex1, liney2) and intersects(liney1, liney2) and intersects(linez1, linez2):
+        if self.intersects(linex1, liney2) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2):
             return True 
        
         return False
@@ -143,17 +144,18 @@ class Substack:
         return cluster_session.runJob(jt)
 
     def touches(self, p1, p2, p1_2, p2_2):
-        if p1 == (p2_2+1) or p2 == (p1_2-1):
+        if p1 == p2_2 or p2 == p1_2:
             return True
         return False
     
     # launch substack stitch command
     def launch_stitch_job(self, substack2, cluster_session):
-        config["bbox1"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z-self.border1]
+        config = {}
+        config["bbox1"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z1-self.border]
         config["bbox2"] = [self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border]
 
-        config["bbox1_2"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z1-self.border]
-        config["bbox2_2"] = [self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border]
+        config["bbox1_2"] = [substack2.roi.x1-self.border, substack2.roi.y1-self.border, substack2.roi.z1-self.border]
+        config["bbox2_2"] = [substack2.roi.x2+self.border, substack2.roi.y2+self.border, substack2.roi.z2+self.border]
 
         config["labels"] = self.session_location + "/supervoxels.h5"
         config["labels_2"] = substack2.session_location + "/supervoxels.h5"
@@ -164,11 +166,11 @@ class Substack:
 
         # axis where substacks touch, across which bodies need to be examined 
         axis = ""
-        if touches(self.roi.x1, self.roi.x2, substack2.roi.x1, substack.roi.x2):
+        if self.touches(self.roi.x1, self.roi.x2, substack2.roi.x1, substack2.roi.x2):
             axis += "x"
-        if touches(self.roi.y1, self.roi.y2, substack2.roi.y1, substack.roi.y2):
+        if self.touches(self.roi.y1, self.roi.y2, substack2.roi.y1, substack2.roi.y2):
             axis += "y"
-        if touches(self.roi.z1, self.roi.z2, substack2.roi.z1, substack.roi.z2):
+        if self.touches(self.roi.z1, self.roi.z2, substack2.roi.z1, substack2.roi.z2):
             axis += "z"
 
         config["overlap-axis"] = axis
@@ -280,7 +282,7 @@ def orchestrate_labeling(options):
     for substack in substacks:
         substack.create_directory(options.session_location)
         # spawn cluster job -- return handler?
-        job_ids.append(substack.launch_label_job(cluster_session, config))
+        #job_ids.append(substack.launch_label_job(cluster_session, config))
         time.sleep(3)
 
     # wait for job completion
@@ -313,10 +315,10 @@ def orchestrate_labeling(options):
         # higher id first
         substack.find_mappings(merge_list, substacks) 
 
-    # make a body2body map (always map to the lower ID)
+    # make a body2body map
     body1body2 = {}
     body2body1 = {}
-    for merger in body2body:
+    for merger in merge_list:
         # body1 -> body2
         body1 = merger[0]
         if merger[0] in body1body2:
@@ -341,7 +343,7 @@ def orchestrate_labeling(options):
     body2body = zip(body1body2.keys(), body1body2.values())
 
     # create label name type
-    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
+    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/grayscale8/" + options.labelname
     requests.post(dataset_name, data='{}', headers=json_header) 
     
     # launch relabel and write jobs and wait 

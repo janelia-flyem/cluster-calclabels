@@ -22,19 +22,19 @@ def execute(argv):
     # remapping is based off of an adjusted set of labels (if necessary)
     if json_data["offset"] != 0:
         labels = labels + json_data["offset"]
-    
+   
     # json mapping should exist
     if json_data["remap"] != "":
-        mapping_col = labels.unique()
+        mapping_col = numpy.unique(labels)
         label_mappings = dict(zip(mapping_col, mapping_col))
         
-        remap_data = json.load(open(json_data["remap"]))
-        for mapping in remap_data["mappings"]:
+        remap_data = json_data["remap"]
+        for mapping in remap_data:
             label_mappings[mapping[0]] = mapping[1]
-    
+
         vectorized_relabel = numpy.frompyfunc(label_mappings.__getitem__, 1, 1)
         labels = vectorized_relabel(labels).astype(numpy.uint64)
-
+    
     # write dvid volume
     # <server>/api/node/<UUID>/<labelname>/raw/0_1_2/
     write_location = json_data["write-location"] 
@@ -49,7 +49,10 @@ def execute(argv):
     labels_data = '<' + 'Q'*len(labels)
     labels_bin = struct.pack(labels_data, *labels)
     
-    print "Send when post is fixed"
+    rfile = args.config_file + ".response"
+    fout = open(rfile, 'w')
+    fout.write(str(len(labels_bin)))
+
     requests.post(write_location, data=labels_bin,
             headers={'content-type': 'application/octet-stream'}) 
 

@@ -40,7 +40,7 @@ def execute(argv):
     offx1, offx2, offx1_2, offx2_2 = intersects(bbx1, bbx2, bbx1_2, bbx2_2)
     offy1, offy2, offy1_2, offy2_2 = intersects(bby1, bby2, bby1_2, bby2_2)
     offz1, offz2, offz1_2, offz2_2 = intersects(bbz1, bbz2, bbz1_2, bbz2_2)
-    
+
     labels1 = numpy.array(hfile['stack'][offz1:offz2, offy1:offy2, offx1:offx2])
     labels2= numpy.array(hfile2['stack'][offz1_2:offz2_2, offy1_2:offy2_2, offx1_2:offx2_2])
 
@@ -49,13 +49,13 @@ def execute(argv):
     z1 = y1 = x1 = 0 
     
     if 'x' in json_data["overlap-axis"]:
-        x1 /= 2 
+        x1 = x2/2 
         x2 = x1 + 1
     if 'y' in json_data["overlap-axis"]:
-        y1 /= 2 
+        y1 = y2/2 
         y2 = y1 + 1
     if 'z' in json_data["overlap-axis"]:
-        z1 /= 2 
+        z1 = z2/2 
         z2 = z1 + 1
     eligible_bodies = set(numpy.unique(labels2[z1:z2, y1:y2, x1:x2]))
     body2body = {}
