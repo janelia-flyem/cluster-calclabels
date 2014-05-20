@@ -22,7 +22,7 @@ const (
 	calclabelsPath = "/calculation/"
 	classifierURI  = "classifiers/"
 	classifierName = "classifier.ilp"
-	segStatusURI   = "calclabelstatus"
+	segStatusURI   = "clusterjobstatus"
 	clusterScript  = "calclabels"
 )
 
@@ -188,6 +188,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 
 	json_data["classifier"] = r.FormValue("classifier")
 	json_data["label-name"] = r.FormValue("labelname")
+	json_data["algorithm"] = r.FormValue("algorithm")
 
 	calcLabels(w, json_data)
 }
@@ -235,23 +236,25 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 		return
 	}
 
-	// must read classifier and dump to session
-	classifier := json_data["classifier"].(string)
-	classifier_url := baseurl + classifierURI + classifier
+        if json_data["algorithm"].(string) == "simp-watershed" { 
+                // must read classifier and dump to session
+                classifier := json_data["classifier"].(string)
+                classifier_url := baseurl + classifierURI + classifier
 
-	// dump classifier to disk under session id (default to specified directory)
-	resp, err := http.Get(classifier_url)
-	if err != nil || resp.StatusCode != 200 {
-		badRequest(w, "Classifier could not be read from "+classifier_url)
-		return
-	}
-	defer resp.Body.Close()
-	bytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		badRequest(w, "Classifier could not be read from "+classifier_url)
-		return
-	}
-	ioutil.WriteFile(session_dir+classifierName, bytes, 0644)
+                // dump classifier to disk under session id (default to specified directory)
+                resp, err := http.Get(classifier_url)
+                if err != nil || resp.StatusCode != 200 {
+                        badRequest(w, "Classifier could not be read from "+classifier_url)
+                        return
+                }
+                defer resp.Body.Close()
+                bytes, err := ioutil.ReadAll(resp.Body)
+                if err != nil {
+                        badRequest(w, "Classifier could not be read from "+classifier_url)
+                        return
+                }
+                ioutil.WriteFile(session_dir+classifierName, bytes, 0644)
+        }
 
 	// load default values
 	if _, found := json_data["job-size"]; !found {

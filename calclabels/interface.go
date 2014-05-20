@@ -47,15 +47,15 @@ title: Cluster Calculate Labels
               },
               "classifier": {
                 "description": "Name of pixel classifier",
-                "type": "string"
+                "type": "string",
+                "default": ""
               },
-              "label-engine": {
-                "description": "Type of algorithm used (currently not used)",
-                "enum": [ "simp-watershed" ],
-                "default": "simp-watershed"
+              "algorithm": {
+                "description": "Type of algorithm used",
+                "enum": [ "simp-watershed", "compute-graph" ]
               }
             },
-            "required" : ["label-name", "uuid", "bbox1", "bbox2", "classifier"]
+            "required" : ["label-name", "uuid", "bbox1", "bbox2", "algorithm"]
           }
     responses:
       200:

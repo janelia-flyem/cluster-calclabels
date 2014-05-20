@@ -13,9 +13,11 @@ To install the service:
 
     % go get github.com/janelia-flyem/cluster-calclabels
 
-The orchestration for generating a large, stitchedi, label volume is done by the python package, CalcLabelOrchestration.
+The orchestration for generating a large, stitched, label volume is done by the python package, CalcLabelOrchestration.
 It should be installed on a compute
-cluster.  This package calls [Gala](https://github.com/janelia-flyem/gala) to generate a watershed. 
+cluster.  This package calls [Gala](https://github.com/janelia-flyem/gala) to generate a watershed and [NeuroProof](https://github.com/janelia-flyem/neuroproof)
+to generate the graph.  (Please note that if one uses buildem to install gala and NeuroProof, the python in buildem could be used to install CalcLabelOrchestration.
+The python requests package and drmaa package must be installed.)
 
 ## Workflow
 

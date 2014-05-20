@@ -24,6 +24,7 @@ classifierName = "classifier.ilp"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 commitLabels = "commit_labels"
+computeGraph = "neuroproof_graph_build"
 stitchLabels = "stitch_labels"
 
 
@@ -40,6 +41,7 @@ class CommandOptions:
         self.labelname = config_data["label-name"]
         self.bbox1 = config_data["bbox1"]
         self.bbox2 = config_data["bbox2"]
+        self.algorithm = config_data["algorithm"]
 
 def num_divs(total_span, substack_span, min_allowed):
     num = total_span / substack_span 
@@ -190,6 +192,19 @@ class Substack:
         jt.args = [configname]
         return cluster_session.runJob(jt)
 
+
+    def launch_compute_graph(self, cluster_session, options):
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = computeGraph 
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", "bodies", "--graph-name", options.labelname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
+        return cluster_session.runJob(jt)
+
+
+
+
     def launch_write_job(self, cluster_session, config):
         config["offset"] = self.id_offset
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
@@ -213,6 +228,8 @@ class Substack:
 
 
 def orchestrate_labeling(options):
+    start_time = time.time()
+    
     json_header = {'content-type': 'application/json'}  
     
     # write status 'started' to DVID
@@ -269,100 +286,118 @@ def orchestrate_labeling(options):
                 substacks.append(Substack(substackid, roi, options.overlap_size/2))
                 substackid += 1 
 
-    # load default config
-    config = {}
-    # assume datatype is called "grayscale"
-    config["datasrc"] = options.dvidserver + "/api/node/" + options.uuid + "/grayscale" 
-    config["classifier"] = options.classifier
-
     # create drmaa session (wait for all jobs to finish for now)
     cluster_session = drmaa.Session()
     cluster_session.initialize()
-    job_ids = []
-    for substack in substacks:
-        substack.create_directory(options.session_location)
-        # spawn cluster job -- return handler?
-        job_ids.append(substack.launch_label_job(cluster_session, config))
-        time.sleep(3)
 
-    # wait for job completion
-    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
-   
-    # write status: 'performed watershed'
-    requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
+    if options.algorithm == "simp-watershed":
+        # load default config
+        config = {}
+        # assume datatype is called "grayscale"
+        config["datasrc"] = options.dvidserver + "/api/node/" + options.uuid + "/grayscale" 
+        config["classifier"] = options.classifier
+
+        job_ids = []
+        for substack in substacks:
+            substack.create_directory(options.session_location)
+            # spawn cluster job -- return handler?
+            job_ids.append(substack.launch_label_job(cluster_session, config))
+            time.sleep(3)
+
+        # wait for job completion
+        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+       
+        # write status: 'performed watershed'
+        requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
     
-    # launch reduce jobs and wait
-    job_ids = []
+        # launch reduce jobs and wait
+        job_ids = []
 
-    for i in range(0, len(substacks)-1):
-        for j in range(i+1, len(substacks)):
-            if substacks[i].isoverlap(substacks[j]):
-                job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
-    
-    # wait for job completion
-    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
-
-    # write status: 'stitched watershed'
-    requests.post(options.callback, data='{"status": "stitched labels"}', headers=json_header)
-    
-    # collect merges, relabels, etc
-    id_offset = 0
-    merge_list = []
-    for substack in substacks:
-        id_offset = substack.set_max_id(id_offset)
-    for substack in substacks:
-        # find all substack labels that need to be remapped (sets the proper offset)
-        # higher id first
-        substack.find_mappings(merge_list, substacks) 
-
-    # make a body2body map
-    body1body2 = {}
-    body2body1 = {}
-    for merger in merge_list:
-        # body1 -> body2
-        body1 = merger[0]
-        if merger[0] in body1body2:
-            body1 = body1body2[merger[0]]
-        body2 = merger[1]
-        if merger[1] in body1body2:
-            body2 = body1body2[merger[1]]
-
-        if body2 not in body2body1:
-            body2body1[body2] = set()
+        for i in range(0, len(substacks)-1):
+            for j in range(i+1, len(substacks)):
+                if substacks[i].isoverlap(substacks[j]):
+                    job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
         
-        # add body1 to body2 map
-        body2body1[body2].add(body1)
-        # add body1 -> body2 mapping
-        body1body2[body1] = body2
+        # wait for job completion
+        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
 
-        if body1 in body2body1:
-            for tbody in body2body1[body1]:
-                body2body1[body2].add(tbody)
-                body1body2[tbody] = body2
+        # write status: 'stitched watershed'
+        requests.post(options.callback, data='{"status": "stitched labels"}', headers=json_header)
     
-    body2body = zip(body1body2.keys(), body1body2.values())
+        # collect merges, relabels, etc
+        id_offset = 0
+        merge_list = []
+        for substack in substacks:
+            id_offset = substack.set_max_id(id_offset)
+        for substack in substacks:
+            # find all substack labels that need to be remapped (sets the proper offset)
+            # higher id first
+            substack.find_mappings(merge_list, substacks) 
 
-    # create label name type
-    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
-    requests.post(dataset_name, data='{}', headers=json_header) 
-    
-    # launch relabel and write jobs and wait 
-    config = {}
-    config["remap"] = body2body 
-    config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
+        # make a body2body map
+        body1body2 = {}
+        body2body1 = {}
+        for merger in merge_list:
+            # body1 -> body2
+            body1 = merger[0]
+            if merger[0] in body1body2:
+                body1 = body1body2[merger[0]]
+            body2 = merger[1]
+            if merger[1] in body1body2:
+                body2 = body1body2[merger[1]]
 
-    job_ids = []
-    for substack in substacks:
-        substack.create_directory(options.session_location)
-        # spawn cluster job
-        job_ids.append(substack.launch_write_job(cluster_session, config))
-        time.sleep(3)
+            if body2 not in body2body1:
+                body2body1[body2] = set()
+            
+            # add body1 to body2 map
+            body2body1[body2].add(body1)
+            # add body1 -> body2 mapping
+            body1body2[body1] = body2
 
-    # wait for job completion
-    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+            if body1 in body2body1:
+                for tbody in body2body1[body1]:
+                    body2body1[body2].add(tbody)
+                    body1body2[tbody] = body2
+        
+        body2body = zip(body1body2.keys(), body1body2.values())
+
+        # create label name type
+        dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
+        requests.post(dataset_name, data='{}', headers=json_header) 
+        
+        # launch relabel and write jobs and wait 
+        config = {}
+        config["remap"] = body2body 
+        config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
+
+        job_ids = []
+        for substack in substacks:
+            substack.create_directory(options.session_location)
+            # spawn cluster job
+            job_ids.append(substack.launch_write_job(cluster_session, config))
+            time.sleep(3)
+
+        # wait for job completion
+        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+    elif options.algorithm == "compute-graph":
+        # create graph type
+        dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labelgraph/" + options.labelname
+        requests.post(dataset_name, data='{}', headers=json_header) 
+        
+        job_ids = []
+        for substack in substacks:
+            # spawn cluster job
+            job_ids.append(substack.launch_compute_graph(cluster_session, options))
+
+        # wait for job completion
+        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+
+    # calculate time
+    total_time = time.time() - start_time
+    json_str = '{"status": "finished", "runtime": %f}' % total_time
 
     # write status: 'finished'
-    requests.post(options.callback, data='{"status": "finished"}', headers=json_header)
+    requests.post(options.callback, data=json_str, headers=json_header)
     cluster_session.exit()
    
 #parses information in config json, assume classifier and json location given directory
@@ -375,5 +410,9 @@ def execute(args):
     config_data = json.load(open(args.session_location + "/" + jsonName))
      
     options = CommandOptions(config_data, args.session_location)
-    orchestrate_labeling(options) 
+    try:
+        orchestrate_labeling(options)
+    except Exception, e:
+        requests.post(options.callback, data=str(e), headers={'content-type': 'application/octet-stream'})
+        
 

@@ -8,7 +8,7 @@ const formHTML=`
 <script type="text/javascript" src="//www.google.com/jsapi"></script>
 
 </head>
-<H2>Calculate Global Label Space Using Cluster</H2>
+<H2>Create DVID Datatype Instance Using Cluster</H2>
 <form id="calclabels" method="post">
 DVID server (e.g., emdata1:80): <input type="text" id="dvidserver" value="DEFAULT"><br>
 DVID uuid: <input type="text" id="uuid"><br>
@@ -16,6 +16,7 @@ Name of label space: <input type="text" id="labelname"><br>
 Bounding box coordinate 1 (e.g., "x,y,z"): <input type="text" id="bbox1"><br>
 Bounding box coordinate 2 (e.g., "x,y,z"): <input type="text" id="bbox2"><br>
 Classifier name (stored on DVID): <input type="text" id="classifier"><br>
+Algorithm name: <select id="algorithm"><option value="compute-graph" selected="selected">Compute Graph</option><option value="simp-watershed">Simple Watershed</option></select><br>
 <input type="submit" value="Submit"/>
 </form>
 
@@ -32,7 +33,7 @@ Classifier name (stored on DVID): <input type="text" id="classifier"><br>
       $.ajax({
         type: "POST",
         url: "/formhandler/",
-        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val()},
+        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val()},
         success: function(data){
             var result_location = data["result-callback"];
             $('#status').html("Location of result on DVID: " + result_location)
