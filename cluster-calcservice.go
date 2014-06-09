@@ -46,7 +46,7 @@ func main() {
 
 	if *registry != "" {
 		// creates adder service and points to first argument
-		serfagent := register.NewAgent("calcoverlap", *portNum)
+		serfagent := register.NewAgent("clustercompute", *portNum)
 		serfagent.RegisterService(*registry)
 	}
 
