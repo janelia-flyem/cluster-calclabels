@@ -279,7 +279,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 
 	// load default values
 	if _, found := json_data["job-size"]; !found {
-		json_data["job-size"] = 250
+		json_data["job-size"] = 500 
 	}
 	if _, found := json_data["overlap-size"]; !found {
 		json_data["overlap-size"] = 40

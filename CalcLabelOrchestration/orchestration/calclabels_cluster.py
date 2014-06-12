@@ -144,7 +144,7 @@ class Substack:
         jt.remoteCommand = watershedExe
 
         # use current environment, use all slots for Ilastik
-        jt.nativeSpecification = "-pe batch 16 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location, "--config-file", self.session_location + "/config.json"]
         return cluster_session.runJob(jt)
 
@@ -201,7 +201,7 @@ class Substack:
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = computeGraph 
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
         jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", "bodies", "--graph-name", options.labelname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
         return cluster_session.runJob(jt)
 
@@ -210,7 +210,7 @@ class Substack:
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = agglomerateGraph 
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
         #print jt.args
         return cluster_session.runJob(jt)
