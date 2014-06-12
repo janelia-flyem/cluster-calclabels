@@ -19,6 +19,7 @@ title: Cluster Calculate Labels
               },
               "label-name": {
                 "description": "name of the datatype to store the labels",
+                "type": "string" 
               },
               "uuid": { "type": "string" },
               "bbox1": {
@@ -50,9 +51,14 @@ title: Cluster Calculate Labels
                 "type": "string",
                 "default": ""
               },
+              "agglomclassifier": {
+                "description": "Name of agglomeration classifier",
+                "type": "string",
+                "default": ""
+              },
               "algorithm": {
                 "description": "Type of algorithm used",
-                "enum": [ "simp-watershed", "compute-graph" ]
+                "enum": [ "segment", "compute-graph" ]
               }
             },
             "required" : ["label-name", "uuid", "bbox1", "bbox2", "algorithm"]

@@ -21,10 +21,12 @@ Basic Algorithm
 
 # assumed constants
 classifierName = "classifier.ilp"
+agglomclassifierName = "agglomclassifier.xml"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 commitLabels = "commit_labels"
 computeGraph = "neuroproof_graph_build"
+agglomerateGraph = "neuroproof_graph_predict"
 stitchLabels = "stitch_labels"
 
 
@@ -33,6 +35,7 @@ class CommandOptions:
     def __init__(self, config_data, session_location):
         self.session_location = session_location
         self.classifier = session_location + "/" + classifierName
+        self.agglomclassifier = session_location + "/" + agglomclassifierName
         self.callback = config_data["result-callback"] 
         self.job_size = config_data["job-size"]
         self.overlap_size = config_data["overlap-size"]
@@ -159,8 +162,8 @@ class Substack:
         config["bbox1_2"] = [substack2.roi.x1-self.border, substack2.roi.y1-self.border, substack2.roi.z1-self.border]
         config["bbox2_2"] = [substack2.roi.x2+self.border, substack2.roi.y2+self.border, substack2.roi.z2+self.border]
 
-        config["labels"] = self.session_location + "/supervoxels.h5"
-        config["labels_2"] = substack2.session_location + "/supervoxels.h5"
+        config["labels"] = self.session_location + "/segmentation.h5"
+        config["labels_2"] = substack2.session_location + "/segmentation.h5"
         
         configname = self.session_location + "/config_stitch" + str(self.num_stitch) + ".json"
         config["output"] = self.session_location + "/merge_" + str(self.num_stitch) + ".json"
@@ -202,7 +205,15 @@ class Substack:
         jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", "bodies", "--graph-name", options.labelname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
         return cluster_session.runJob(jt)
 
-
+    def launch_agglomerate(self, cluster_session, options):
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = agglomerateGraph 
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
+        #print jt.args
+        return cluster_session.runJob(jt)
 
 
     def launch_write_job(self, cluster_session, config):
@@ -210,7 +221,7 @@ class Substack:
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
-        config["labels"] = self.session_location + "/supervoxels.h5"
+        config["labels"] = self.session_location + "/segmentation.h5"
         fout = open(self.session_location + "/configw.json", 'w')
         fout.write(json.dumps(config, indent=4))
         fout.close()
@@ -290,7 +301,7 @@ def orchestrate_labeling(options):
     cluster_session = drmaa.Session()
     cluster_session.initialize()
 
-    if options.algorithm == "simp-watershed":
+    if options.algorithm == "segment":
         # load default config
         config = {}
         # assume datatype is called "grayscale"
@@ -302,14 +313,27 @@ def orchestrate_labeling(options):
             substack.create_directory(options.session_location)
             # spawn cluster job -- return handler?
             job_ids.append(substack.launch_label_job(cluster_session, config))
-            time.sleep(3)
+            # throttling now supported
+            #time.sleep(3) # will be handled by throttled command shortly making this moot
 
         # wait for job completion
         cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
-       
+      
         # write status: 'performed watershed'
         requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
-    
+   
+        # launch neuroproof segmentation jobs
+        job_ids = []
+        for substack in substacks:
+            # spawn cluster job
+            job_ids.append(substack.launch_agglomerate(cluster_session, options))
+
+        # wait for job completion
+        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+
+        # write status: 'performed watershed'
+        requests.post(options.callback, data='{"status": "performed agglomeration"}', headers=json_header)
+
         # launch reduce jobs and wait
         job_ids = []
 

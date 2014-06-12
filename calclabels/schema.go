@@ -44,9 +44,14 @@ const calclabelsSchema = `
       "type": "string",
       "default": ""
     },
+    "agglomclassifier": {
+                "description": "Name of agglomeration classifier",
+                "type": "string",
+                "default": ""
+    },
     "algorithm": {
       "description": "Type of algorithm used",
-      "enum": [ "simp-watershed", "compute-graph" ]
+      "enum": [ "segment", "compute-graph" ]
     }
   },
   "required" : ["label-name", "uuid", "bbox1", "bbox2", "algorithm"]

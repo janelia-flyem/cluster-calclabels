@@ -22,6 +22,7 @@ const (
 	calclabelsPath = "/calculation/"
 	classifierURI  = "classifiers/"
 	classifierName = "classifier.ilp"
+	agglomclassifierName = "agglomclassifier.xml"
 	segStatusURI   = "clusterjobstatus"
 	clusterScript  = "calclabels"
 )
@@ -187,6 +188,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	json_data["bbox2"] = bbox2_list
 
 	json_data["classifier"] = r.FormValue("classifier")
+	json_data["agglomclassifier"] = r.FormValue("agglomclassifier")
 	json_data["label-name"] = r.FormValue("labelname")
 	json_data["algorithm"] = r.FormValue("algorithm")
 
@@ -236,7 +238,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 		return
 	}
 
-        if json_data["algorithm"].(string) == "simp-watershed" { 
+        if json_data["algorithm"].(string) == "segment" { 
                 // must read classifier and dump to session
                 classifier := json_data["classifier"].(string)
                 classifier_url := baseurl + classifierURI + classifier
@@ -254,11 +256,30 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
                         return
                 }
                 ioutil.WriteFile(session_dir+classifierName, bytes, 0644)
+        
+
+
+                agglomclassifier := json_data["agglomclassifier"].(string)
+                agglomclassifier_url := baseurl + classifierURI + agglomclassifier
+
+                // dump classifier to disk under session id (default to specified directory)
+                resp, err = http.Get(agglomclassifier_url)
+                if err != nil || resp.StatusCode != 200 {
+                        badRequest(w, "Classifier could not be read from "+agglomclassifier_url)
+                        return
+                }
+                defer resp.Body.Close()
+                bytes, err = ioutil.ReadAll(resp.Body)
+                if err != nil {
+                        badRequest(w, "Classifier could not be read from "+agglomclassifier_url)
+                        return
+                }
+                ioutil.WriteFile(session_dir+agglomclassifierName, bytes, 0644)
         }
 
 	// load default values
 	if _, found := json_data["job-size"]; !found {
-		json_data["job-size"] = 500
+		json_data["job-size"] = 250
 	}
 	if _, found := json_data["overlap-size"]; !found {
 		json_data["overlap-size"] = 40

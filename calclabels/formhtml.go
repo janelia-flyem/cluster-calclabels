@@ -15,8 +15,9 @@ DVID uuid: <input type="text" id="uuid"><br>
 Name of label space: <input type="text" id="labelname"><br>
 Bounding box coordinate 1 (e.g., "x,y,z"): <input type="text" id="bbox1"><br>
 Bounding box coordinate 2 (e.g., "x,y,z"): <input type="text" id="bbox2"><br>
-Classifier name (stored on DVID): <input type="text" id="classifier"><br>
-Algorithm name: <select id="algorithm"><option value="compute-graph" selected="selected">Compute Graph</option><option value="simp-watershed">Simple Watershed</option></select><br>
+Classifier name (stored on DVID at classifiers/): <input type="text" id="classifier"><br>
+Agglomeration classifier name (stored on DVID at classifiers/): <input type="text" id="agglomclassifier"><br>
+Algorithm name: <select id="algorithm"><option value="compute-graph" selected="selected">Compute Graph</option><option value="segment">Segment</option></select><br>
 <input type="submit" value="Submit"/>
 </form>
 
@@ -33,7 +34,7 @@ Algorithm name: <select id="algorithm"><option value="compute-graph" selected="s
       $.ajax({
         type: "POST",
         url: "/formhandler/",
-        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val()},
+        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val()},
         success: function(data){
             var result_location = data["result-callback"];
             $('#status').html("Location of result on DVID: " + result_location)
