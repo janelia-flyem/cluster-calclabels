@@ -43,7 +43,7 @@ title: Cluster Calculate Labels
               },
               "overlap-size": {
                 "description": "Pixel overlap between adjacent sub-regions used in stitching (default: 40)",
-                "type": "integer"
+                "type": "integer",
                 "default": 40
               },
               "classifier": {
@@ -78,7 +78,6 @@ title: Cluster Calculate Labels
                   }
                 },
                 "required" : ["result-callback"]
-                }
               }
 /interface/interface.raml:
   get:

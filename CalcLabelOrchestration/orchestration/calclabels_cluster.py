@@ -25,7 +25,7 @@ agglomclassifierName = "agglomclassifier.xml"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 commitLabels = "commit_labels"
-computeGraph = "neuroproof_graph_build"
+computeGraph = "neuroproof_graph_build_dvid"
 agglomerateGraph = "neuroproof_graph_predict"
 stitchLabels = "stitch_labels"
 
