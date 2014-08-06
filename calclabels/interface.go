@@ -46,6 +46,11 @@ title: Cluster Calculate Labels
                 "type": "integer",
                 "default": 40
               },
+              "synapses": {
+                "description": "Name of synapse file in DVID",
+                "type": "string",
+                "default": ""
+              },
               "classifier": {
                 "description": "Name of pixel classifier",
                 "type": "string",
@@ -53,6 +58,11 @@ title: Cluster Calculate Labels
               },
               "agglomclassifier": {
                 "description": "Name of agglomeration classifier",
+                "type": "string",
+                "default": ""
+              },
+              "graphclassifier": {
+                "description": "Name of graph classifier to compute edge uncertainty",
                 "type": "string",
                 "default": ""
               },

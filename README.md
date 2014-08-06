@@ -14,26 +14,42 @@ To install the service:
     % go get github.com/janelia-flyem/cluster-calclabels
 
 The orchestration for generating a large, stitched, label volume is done by the python package, CalcLabelOrchestration.
-It should be installed on a compute
-cluster.  This package calls [Gala](https://github.com/janelia-flyem/gala) to generate a watershed and [NeuroProof](https://github.com/janelia-flyem/neuroproof)
-to generate the graph.  (Please note that if one uses buildem to install gala and NeuroProof, the python in buildem could be used to install CalcLabelOrchestration.
-The python requests package and drmaa package must be installed.)
+It should be installed on a machine that can access a SGE compute cluster.
+
+CalcLabelOrchestration requires the requests and drmaa package.
+
+## Overview
+
+This cluster service takes a REST request for labeling an ROI of grayscale stored in DVID and producing a
+graph corresponding to these labels.  (The user can also choose to generate a graph over previously computed labels.)  It will
+invoke an orchestrating script on a compute cluster on overlapping chunks of the ROI.  Seperate executables for segmenting
+and graph creation will be called for each chunk and stitched together accordingly and written back to DVID.
 
 ## Workflow
 
-This cluster service takes a REST request for labeling an ROI of grayscale stored in DVID.  It will
-invoke an orchestrating script on a compute cluster which will run a watershed algorithm (Gala) on
-overlapping chunks of the ROI.  These chunks are stitched and the labels are written back to DVID.
-Ideally, this service should be able to call any watershed or labeling service.  Currently, the invocation
-to Gala is hard-coded in the orchestrating script.
+The cluster workflow calls the following tools which need to be accessible to each node in the cluster:
 
-If the service is running on a machine that does not contain an installation of the orchestrator (e.g.,
-when the service is not running on the compute cluster), a simple configuration
-file should be provided to specify the location of the orchestrating script and the cluster environment.
+* [Gala](https://github.com/janelia-flyem/gala): calls [Ilastik](https://github.com/ilastik) for boundary prediction and performs seeded watershed (grayscale -> labels)
+* [NeuroProof](https://github.com/janelia-flyem/neuroproof): performs agglomeration (labels->labels)
+* CalcLabelOrchestration->stitch_labels: Subvolume stitching (labels->maps)
+* CalcLabelOrchestration->commit_labels: Write stitched subvolumes to DVID
+* NeuroProof: build region adjacency graph (RAG) from labels (labels->graph)
+* NeuroProof: generate uncertainty between graph edges (graph->graph)
+
+## Other Details
+
+For this script to work properly on the cluster, automatic ssh access must be available from the http server to the orchestrating script.  When launching the server,
+the config json file in the main directory should be modified to point to the installed executables.  Information for each cluster run is stored in the directory
+provided when starting up the server.
+
+The graph classifier, agglomeration classifier, and pixel classifier used by this workflow should be stored in the DVID key value titled 'classifiers'.  Synapse
+information should be stored in the DVID key value titled 'annotations'.
 
 ##TODO
 
-* Create a [buildem](https://github.com/janelia-flyem/buildem) installation for gala, Ilastik, and CalcLabelOrchestration
-* Improve stitcher to handle corner cases in branching (just set a hard threshold)
-* Change overlap boundaries for stitching
-* Generic REST interfaces for watershed generation
+* Regression and integration testing
+* Add robust loggging and some performance benchmarking (runtime for different processes, memory usage, etc) -- return webpage with stats and errors to user
+* Refactor backend orchestrating code (CalcLabelOrchestration) in favor of cluster workflow developed in Apache Spark
+* Allow for flexible plug-n-play interface for calling different support algorithms
+* Create a [buildem](https://github.com/janelia-flyem/buildem) or generic install for suite of tools
+* Create google VM image for cluster installation

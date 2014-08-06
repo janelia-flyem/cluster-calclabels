@@ -4,6 +4,7 @@ import numpy
 import struct
 import json
 import requests
+import time
 
 def execute(argv):
     parser = argparse.ArgumentParser(description="Writes h5 to DVID")
@@ -24,7 +25,7 @@ def execute(argv):
         labels = labels + json_data["offset"]
    
     # json mapping should exist
-    if json_data["remap"] != "":
+    if len(json_data["remap"]) != 0:
         mapping_col = numpy.unique(labels)
         label_mappings = dict(zip(mapping_col, mapping_col))
         
@@ -45,14 +46,41 @@ def execute(argv):
     write_location += "/{sx}_{sy}_{sz}/{x}_{y}_{z}".format(sx=sizes[0],
             sy=sizes[1], sz=sizes[2], x=bbox1[0], y=bbox1[1], z=bbox1[2])
 
+    # enable throttling
+    write_location += "?throttle=on"
+
     labels = labels.ravel().copy()
     labels_data = '<' + 'Q'*len(labels)
     labels_bin = struct.pack(labels_data, *labels)
     
     rfile = args.config_file + ".response"
-    fout = open(rfile, 'w')
-    fout.write(str(len(labels_bin)))
 
-    requests.post(write_location, data=labels_bin,
-            headers={'content-type': 'application/octet-stream'}) 
+    completed = False
+    iter1 = 0
 
+    requests.adapters.DEFAULT_RETRIES = 100
+    from requests.adapters import HTTPAdapter
+
+    s = requests.Session()
+    s.mount(write_location, HTTPAdapter(max_retries=100))
+
+    try:
+        while not completed:
+            completed = True
+            iter1 += 1
+            r = s.post(write_location, data=labels_bin,
+                    headers={'content-type': 'application/octet-stream'}) 
+            
+            if r.status_code == 503:
+                time.sleep(1)
+                completed = False
+            elif r.status_code == 200: 
+                fout = open(rfile, 'w')
+                fout.write(str(len(labels_bin))+": success in " + str(iter1) + " tries")
+            else:
+                fout = open(rfile, 'w')
+                fout.write(str(len(labels_bin))+": failed "+str(r.status_code))
+    except Exception, e:
+        fout = open(rfile, 'w')
+        fout.write("Exception: "+str(e)+ " num tries" + str(iter1))
+    

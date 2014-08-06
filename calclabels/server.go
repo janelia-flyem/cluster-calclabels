@@ -21,8 +21,11 @@ const (
 	interfacePath  = "/interface/"
 	calclabelsPath = "/calculation/"
 	classifierURI  = "classifiers/"
+	annotationsURI  = "annotations/"
 	classifierName = "classifier.ilp"
 	agglomclassifierName = "agglomclassifier.xml"
+	graphclassifierName = "graphclassifier.h5"
+	synapsesName = "synapses.json"
 	segStatusURI   = "clusterjobstatus"
 	clusterScript  = "calclabels"
 )
@@ -187,10 +190,13 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	json_data["bbox1"] = bbox1_list
 	json_data["bbox2"] = bbox2_list
 
+        json_data["synapses"] = r.FormValue("synapses")
 	json_data["classifier"] = r.FormValue("classifier")
 	json_data["agglomclassifier"] = r.FormValue("agglomclassifier")
+	json_data["graphclassifier"] = r.FormValue("graphclassifier")
 	json_data["label-name"] = r.FormValue("labelname")
 	json_data["algorithm"] = r.FormValue("algorithm")
+	json_data["job-size"], _ = strconv.Atoi(r.FormValue("jobsize"))
 
 	calcLabels(w, json_data)
 }
@@ -232,7 +238,6 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	session_id = session_id + "-" + strconv.Itoa(tstamp)
 	session_dir := resultDirectory + session_id + "/"
 	err = os.MkdirAll(session_dir, 0755)
-
 	if err != nil {
 		badRequest(w, "No permission to write directory to: "+resultDirectory)
 		return
@@ -257,8 +262,6 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
                 }
                 ioutil.WriteFile(session_dir+classifierName, bytes, 0644)
         
-
-
                 agglomclassifier := json_data["agglomclassifier"].(string)
                 agglomclassifier_url := baseurl + classifierURI + agglomclassifier
 
@@ -275,6 +278,45 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
                         return
                 }
                 ioutil.WriteFile(session_dir+agglomclassifierName, bytes, 0644)
+        
+                graphclassifier := json_data["graphclassifier"].(string)
+                graphclassifier_url := baseurl + classifierURI + graphclassifier
+
+                // dump classifier to disk under session id (default to specified directory)
+                resp, err = http.Get(graphclassifier_url)
+                if err != nil || resp.StatusCode != 200 {
+                        badRequest(w, "Classifier could not be read from "+graphclassifier_url)
+                        return
+                }
+                defer resp.Body.Close()
+                bytes, err = ioutil.ReadAll(resp.Body)
+                if err != nil {
+                        badRequest(w, "Classifier could not be read from "+graphclassifier_url)
+                        return
+                }
+                ioutil.WriteFile(session_dir+graphclassifierName, bytes, 0644)
+        
+
+                // dump synapses file if it exists
+                synapses := json_data["synapses"].(string)
+                
+                if synapses != "" {
+                        synapses_url := baseurl + annotationsURI + synapses
+
+                        // dump synapses to disk under session id (default to specified directory)
+                        resp, err := http.Get(synapses_url)
+                        if err != nil || resp.StatusCode != 200 {
+                                badRequest(w, "Synapses could not be read from "+synapses_url)
+                                return
+                        }
+                        defer resp.Body.Close()
+                        bytes, err := ioutil.ReadAll(resp.Body)
+                        if err != nil {
+                                badRequest(w, "Synapses could not be read from "+synapses_url)
+                                return
+                        }
+                        ioutil.WriteFile(session_dir+synapsesName, bytes, 0644)
+                }
         }
 
 	// load default values

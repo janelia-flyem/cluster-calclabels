@@ -5,6 +5,8 @@ import json
 import requests
 import drmaa
 import time
+import numpy
+import h5py
 
 """
 Basic Algorithm
@@ -22,10 +24,13 @@ Basic Algorithm
 # assumed constants
 classifierName = "classifier.ilp"
 agglomclassifierName = "agglomclassifier.xml"
+graphclassifierName = "graphclassifier.h5"
+synapsesName = "synapses.json"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
 commitLabels = "commit_labels"
 computeGraph = "neuroproof_graph_build_dvid"
+computeProb = "neuroproof_agg_prob_dvid"
 agglomerateGraph = "neuroproof_graph_predict"
 stitchLabels = "stitch_labels"
 
@@ -36,6 +41,8 @@ class CommandOptions:
         self.session_location = session_location
         self.classifier = session_location + "/" + classifierName
         self.agglomclassifier = session_location + "/" + agglomclassifierName
+        self.graphclassifier = session_location + "/" + graphclassifierName
+        self.synapses = session_location + "/" + synapsesName
         self.callback = config_data["result-callback"] 
         self.job_size = config_data["job-size"]
         self.overlap_size = config_data["overlap-size"]
@@ -68,6 +75,7 @@ class Substack:
         self.border = boundbuffer
         self.substackid = substackid
         self.num_stitch = 0
+        self.synapsedata = False
 
     # create working directory
     def create_directory(self, basepath):
@@ -98,7 +106,7 @@ class Substack:
         linez2 = [substack2.roi.z1, substack2.roi.z2]
        
         # check intersection
-        if self.intersects(linex1, liney2) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2):
+        if self.intersects(linex1, linex2) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2):
             return True 
        
         return False
@@ -129,16 +137,75 @@ class Substack:
                     body1, body2 = body2, body1
                 merge_list.append([body1, body2])
 
+    # load synapse data into local file (assume data is a unique copy)
+    def load_local_synapse_file(self, data):
+        self.synapsedata = True
+        lowerbound_in = numpy.array([self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z1-self.border])
+        upperbound_ex = numpy.array([self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border])
+        dims = upperbound_ex - lowerbound_in
+
+        synapse_list = []
+
+        for synapse in data["data"]:
+            foundviolation = False
+
+            synapse["T-bar"]["location"] = list(numpy.array(synapse["T-bar"]["location"]) - lowerbound_in)
+
+            # check if tbar is beyond bounding box
+            vios1 = dims - numpy.array(synapse["T-bar"]["location"])
+            vios2 = numpy.array(synapse["T-bar"]["location"])
+            for iter in range(0, len(vios1)):
+                if vios2[iter] < 0 or vios1[iter] <= 0:
+                    foundviolation = True
+                    break
+            if foundviolation:
+                continue
+            # flip y to conform to raveler y format (which gala and neuroproof handle)
+            synapse["T-bar"]["location"][1] = dims[1] - synapse["T-bar"]["location"][1] - 1
+
+            # no constraints need to be added otherwise
+            if len(synapse["partners"]) == 0:
+                continue
+
+            for partner in synapse["partners"]:
+                partner["location"] = list(numpy.array(partner["location"]) - lowerbound_in)
+
+                # check if psd is beyond bounding box
+                vios1 = dims - numpy.array(partner["location"])
+                vios2 = numpy.array(partner["location"])
+                for iter in range(0, len(vios1)):
+                    if vios2[iter] < 0 or vios1[iter] <= 0:
+                        foundviolation = True
+                        break
+                if foundviolation:
+                    break
+                # flip y to conform to raveler y format (which gala and neuroproof handle)
+                partner["location"][1] = dims[1] - partner["location"][1] - 1
+                
+            if foundviolation:
+                continue
+
+            synapse_list.append(synapse)
+
+        new_data = {}
+        new_data["data"] = synapse_list
+        new_data["metadata"] = data["metadata"]
+
+        fout = open(self.session_location + "/synapses_local.json", 'w')
+        fout.write(json.dumps(new_data, indent=4))
+        fout.close()
 
     # write out configuration json and launch job
     def launch_label_job(self, cluster_session, config):
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
+        if self.synapsedata:
+            config["synapse-file"] = self.session_location + "/synapses_local.json"
         fout = open(self.session_location + "/config.json", 'w')
         fout.write(json.dumps(config, indent=4))
         fout.close()
-        
+
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = watershedExe
@@ -196,13 +263,51 @@ class Substack:
         return cluster_session.runJob(jt)
 
 
-    def launch_compute_graph(self, cluster_session, options):
+    def launch_compute_graph(self, cluster_session, options, graphname, labelvolname, docomputeprob):
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = computeGraph 
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
-        jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", "bodies", "--graph-name", options.labelname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
+        args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", labelvolname, "--graph-name", graphname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
+
+        if docomputeprob:
+            # program will handle the fact that there is a uniform buffer in the prediction file
+            args.append("--prediction-file")
+            args.append(self.session_location + "/STACKED_prediction.h5")
+
+            # for debugging purposes only
+            args.append("--classifier-file")
+            args.append(options.graphclassifier)
+            args.append("--dumpgraph")
+            args.append("1")
+
+        jt.args = args
+        return cluster_session.runJob(jt)
+
+    # calculate the probability for every edge in the graph
+    def launch_compute_probs(self, cluster_session, options, vertices, graphname):
+        # write out json for vertices
+        vertex_list = []
+        for vertex in vertices:
+            vertex_list.append(vertex["Id"])
+        json_data = {}
+        json_data["body-list"] = vertex_list
+        fout = open(self.session_location + "/body_list.json", 'w')
+        fout.write(json.dumps(json_data, indent=4))
+        fout.close()
+
+        # find number of channels
+        h5pred = h5py.File(self.session_location + "/STACKED_prediction.h5")
+        x,y,z,num_chans = h5pred["volume/predictions"].shape
+
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = computeProb
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--bodylist-name", self.session_location + "/body_list.json", "--graph-name", graphname, "--classifier-file", options.graphclassifier, "--num-chans", str(num_chans), "--dumpfile", "1"]
+
         return cluster_session.runJob(jt)
 
     def launch_agglomerate(self, cluster_session, options):
@@ -211,7 +316,14 @@ class Substack:
         jt.remoteCommand = agglomerateGraph 
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
-        jt.args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
+        args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
+       
+        # add synapse file if it exists
+        if self.synapsedata:
+            args.append("--synapse-file")
+            args.append(self.session_location + "/synapses_local.json")
+        jt.args = args
+
         #print jt.args
         return cluster_session.runJob(jt)
 
@@ -302,6 +414,21 @@ def orchestrate_labeling(options):
     cluster_session.initialize()
 
     if options.algorithm == "segment":
+        # read synapse file and catch error if not there
+        
+        synapseread = False
+        try:
+            # create synapse assignments if available
+            for substack in substacks:
+                fin = open(options.synapses)
+                data = json.load(fin)
+                synapseread = True
+                # create local file and set synapse variable for relevant subsequent actions
+                substack.create_directory(options.session_location)
+                substack.load_local_synapse_file(data)
+        except Exception, e:
+            pass
+
         # load default config
         config = {}
         # assume datatype is called "grayscale"
@@ -310,7 +437,8 @@ def orchestrate_labeling(options):
 
         job_ids = []
         for substack in substacks:
-            substack.create_directory(options.session_location)
+            if not synapseread:
+                substack.create_directory(options.session_location)
             # spawn cluster job -- return handler?
             job_ids.append(substack.launch_label_job(cluster_session, config))
             # throttling now supported
@@ -320,7 +448,7 @@ def orchestrate_labeling(options):
         cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
       
         # write status: 'performed watershed'
-        requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
+        #requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
    
         # launch neuroproof segmentation jobs
         job_ids = []
@@ -336,7 +464,7 @@ def orchestrate_labeling(options):
 
         # launch reduce jobs and wait
         job_ids = []
-
+        
         for i in range(0, len(substacks)-1):
             for j in range(i+1, len(substacks)):
                 if substacks[i].isoverlap(substacks[j]):
@@ -396,25 +524,60 @@ def orchestrate_labeling(options):
 
         job_ids = []
         for substack in substacks:
-            substack.create_directory(options.session_location)
             # spawn cluster job
             job_ids.append(substack.launch_write_job(cluster_session, config))
-            time.sleep(3)
 
         # wait for job completion
         cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
-    elif options.algorithm == "compute-graph":
-        # create graph type
-        dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labelgraph/" + options.labelname
-        requests.post(dataset_name, data='{}', headers=json_header) 
-        
+    
+    # always compute graph
+    # create graph type
+    
+    graphname = options.labelname 
+    labelvolname = "bodies"
+    doprediction = False
+    if options.algorithm == "segment":
+        graphname = graphname + "-graph"
+        labelvolname = options.labelname 
+        doprediction = True
+
+    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labelgraph/" + graphname 
+    requests.post(dataset_name, data='{}', headers=json_header) 
+   
+    job_ids = []
+    for substack in substacks:
+        # spawn cluster job
+        job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
+
+    # wait for job completion
+    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+
+    # only compute probs if this was a segmentation run
+    if doprediction:
+        # handle prob calc (grab entire graph, create body lists, parse number of channels from ILP)
+        r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + graphname + "/subgraph") 
+        complete_graph = r.json()
+       
+        # find channels from ILP
+
+        # retrieve all vertices
+        import random
+        vertices = complete_graph["Vertices"]
+        random.shuffle(vertices)
+        incr = len(vertices) / len(substacks) + 1
+        start = 0
+
         job_ids = []
         for substack in substacks:
-            # spawn cluster job
-            job_ids.append(substack.launch_compute_graph(cluster_session, options))
+            # choose random set of vertices
+            # spawn cluster job for computing probs
+            job_ids.append(substack.launch_compute_probs(cluster_session, options, vertices[start:start+incr], graphname))
+            time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
+            start += incr
 
         # wait for job completion
         cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+
 
     # calculate time
     total_time = time.time() - start_time
@@ -437,6 +600,7 @@ def execute(args):
     try:
         orchestrate_labeling(options)
     except Exception, e:
+        print e
         requests.post(options.callback, data=str(e), headers={'content-type': 'application/octet-stream'})
         
 
