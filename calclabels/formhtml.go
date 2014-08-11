@@ -27,10 +27,12 @@ function segSelect(){
 <form id="calclabels" method="post">
 DVID server (e.g., emdata1:80): <input type="text" id="dvidserver" value="DEFAULT"><br>
 DVID uuid: <input type="text" id="uuid"><br>
-Job size: <input type="text" id="jobsize" value="500"><br>
+Job size: <input type="text" id="jobsize" value="512"><br>
 Name of DVID segmentation or graph: <input type="text" id="labelname"><br>
 Bounding box coordinate 1 (e.g., "x,y,z"): <input type="text" id="bbox1"><br>
 Bounding box coordinate 2 (e.g., "x,y,z"): <input type="text" id="bbox2"><br>
+or <br>
+ROI name: <input type="text" id="roi"><br>
 
 <div id="segspecific" style="visibility: hidden">
 Boundary classifier name (stored on DVID at classifiers/): <input type="text" id="classifier"><br>
@@ -59,7 +61,7 @@ Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="com
       $.ajax({
         type: "POST",
         url: "/formhandler/",
-        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val()},
+        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val(), roi: $('#roi').val()},
         success: function(data){
             result_location = data["result-callback"];
             $('#status').html("Location of result on DVID: " + result_location);

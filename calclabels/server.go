@@ -196,24 +196,32 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	bbox1 := r.FormValue("bbox1")
 	bbox2 := r.FormValue("bbox2")
 
-	var bbox1_list []interface{}
-	var bbox2_list []interface{}
-
-	bbox1_str := strings.Split(bbox1, ",")
-	bbox2_str := strings.Split(bbox2, ",")
-	for _, coord_str := range bbox1_str {
-		coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
-		bbox1_list = append(bbox1_list, float64(coord))
-	}
-	for _, coord_str := range bbox2_str {
-		coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
-		bbox2_list = append(bbox2_list, float64(coord))
-	}
-
-	json_data["bbox1"] = bbox1_list
-	json_data["bbox2"] = bbox2_list
+        var bbox1_list []interface{}
+        var bbox2_list []interface{}
+        if bbox1 != "" && bbox2 != "" {
+                bbox1_str := strings.Split(bbox1, ",")
+                bbox2_str := strings.Split(bbox2, ",")
+                for _, coord_str := range bbox1_str {
+                        coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
+                        bbox1_list = append(bbox1_list, float64(coord))
+                }
+                for _, coord_str := range bbox2_str {
+                        coord, _ := strconv.Atoi(strings.Trim(coord_str, " "))
+                        bbox2_list = append(bbox2_list, float64(coord))
+                }
+        } else {
+                bbox1_list = append(bbox1_list, float64(0))
+                bbox1_list = append(bbox1_list, float64(0))
+                bbox1_list = append(bbox1_list, float64(0))
+                bbox2_list = append(bbox2_list, float64(0))
+                bbox2_list = append(bbox2_list, float64(0))
+                bbox2_list = append(bbox2_list, float64(0))
+        }
+        json_data["bbox1"] = bbox1_list
+        json_data["bbox2"] = bbox2_list
 
         json_data["synapses"] = r.FormValue("synapses")
+        json_data["roi"] = r.FormValue("roi")
 	json_data["classifier"] = r.FormValue("classifier")
 	json_data["agglomclassifier"] = r.FormValue("agglomclassifier")
 	json_data["graphclassifier"] = r.FormValue("graphclassifier")

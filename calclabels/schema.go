@@ -44,6 +44,11 @@ const calclabelsSchema = `
       "type": "string",
       "default": ""
     },
+    "roi": {
+      "description": "Name of roi in DVID (specified if bounds are not specified)",
+      "type": "string",
+      "default": ""
+    },
     "classifier": {
       "description": "Name of pixel classifier",
       "type": "string",
@@ -64,6 +69,6 @@ const calclabelsSchema = `
       "enum": [ "segment", "compute-graph" ]
     }
   },
-  "required" : ["label-name", "uuid", "bbox1", "bbox2", "algorithm"]
+  "required" : ["label-name", "uuid", "algorithm"]
 }
 `

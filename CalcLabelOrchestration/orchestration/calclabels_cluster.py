@@ -43,6 +43,7 @@ class CommandOptions:
         self.agglomclassifier = session_location + "/" + agglomclassifierName
         self.graphclassifier = session_location + "/" + graphclassifierName
         self.synapses = session_location + "/" + synapsesName
+        self.roi = config_data["roi"]
         self.callback = config_data["result-callback"] 
         self.job_size = config_data["job-size"]
         self.overlap_size = config_data["overlap-size"]
@@ -426,52 +427,65 @@ def orchestrate_labeling(options, message):
     smallest_allowed = 50
     if options.overlap_size > smallest_allowed:
         smallest_allowed = options.overlap_size
-
-    # find extents of stack -- [min, max)
-    x1, x2 = options.bbox1[0], options.bbox2[0]
-    if x1 > x2:
-        x1, x2 = x2, x1
-    y1, y2 = options.bbox1[1], options.bbox2[1]
-    if y1 > y2:
-        y1, y2 = y2, y1
-    z1, z2 = options.bbox1[2], options.bbox2[2]
-    if z1 > z2:
-        z1, z2 = z2, z1
-
-    xspan = x2 - x1
-    yspan = y2 - y1
-    zspan = z2 - z1 
-
-    # divide into substacks, create custom jsons/directories
-    xnum = num_divs(xspan, options.job_size, smallest_allowed)   
-    ynum = num_divs(yspan, options.job_size, smallest_allowed)   
-    znum = num_divs(zspan, options.job_size, smallest_allowed)   
-
+    
     substacks = []
     substackid = 0
 
-    # load substacks -- do check for max-1
-    for x in range(0, xnum):
-        for y in range(0, ynum):
-            for z in range(0, znum):
-                startx = x * options.job_size + x1
-                finishx = (x+1) * options.job_size + x1
-                if x == (xnum-1):
-                    finishx = x2
-                
-                starty = y * options.job_size + y1
-                finishy = (y+1) * options.job_size + y1
-                if y == (ynum-1):
-                    finishy = y2
-                
-                startz = z * options.job_size + z1
-                finishz = (z+1) * options.job_size + z1
-                if z == (znum-1):
-                    finishz = z2
+    if options.roi == "":
+        # find extents of stack -- [min, max)
+        x1, x2 = options.bbox1[0], options.bbox2[0]
+        if x1 > x2:
+            x1, x2 = x2, x1
+        y1, y2 = options.bbox1[1], options.bbox2[1]
+        if y1 > y2:
+            y1, y2 = y2, y1
+        z1, z2 = options.bbox1[2], options.bbox2[2]
+        if z1 > z2:
+            z1, z2 = z2, z1
 
-                roi = Bbox(startx, starty, startz, finishx, finishy, finishz)  
-                substacks.append(Substack(substackid, roi, options.overlap_size/2))
-                substackid += 1 
+        xspan = x2 - x1
+        yspan = y2 - y1
+        zspan = z2 - z1 
+
+        # divide into substacks, create custom jsons/directories
+        xnum = num_divs(xspan, options.job_size, smallest_allowed)   
+        ynum = num_divs(yspan, options.job_size, smallest_allowed)   
+        znum = num_divs(zspan, options.job_size, smallest_allowed)   
+
+
+        # load substacks -- do check for max-1
+        for x in range(0, xnum):
+            for y in range(0, ynum):
+                for z in range(0, znum):
+                    startx = x * options.job_size + x1
+                    finishx = (x+1) * options.job_size + x1
+                    if x == (xnum-1):
+                        finishx = x2
+                    
+                    starty = y * options.job_size + y1
+                    finishy = (y+1) * options.job_size + y1
+                    if y == (ynum-1):
+                        finishy = y2
+                    
+                    startz = z * options.job_size + z1
+                    finishz = (z+1) * options.job_size + z1
+                    if z == (znum-1):
+                        finishz = z2
+
+                    roi = Bbox(startx, starty, startz, finishx, finishy, finishz)  
+                    substacks.append(Substack(substackid, roi, options.overlap_size/2))
+                    substackid += 1 
+    else:
+        # grab roi
+        # ?! update correct URL and json interface
+        r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + options.roi + "?substack-size=" + str(options.job_size)) 
+        substack_data = r.json()
+        for substack in substack_data["substacks"]:
+            roi = Bbox(substack[0], substack[1], substack[2],
+                    substack[0] + options.job_size, substack[1] + options.job_size,
+                    substack[2] + options.job_size)  
+            substacks.append(Substack(substackid, roi, options.overlap_size/2))
+            substackid += 1 
 
     # create drmaa session (wait for all jobs to finish for now)
     cluster_session = drmaa.Session()
@@ -585,10 +599,12 @@ def orchestrate_labeling(options, message):
         config = {}
         config["remap"] = body2body 
         config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
+        config["roi"] = options.roi
 
         job_ids = []
         for substack in substacks:
             # spawn cluster job
+            # ?! modify commit label script to handle ROI if provided
             job_ids.append(substack.launch_write_job(cluster_session, config))
 
         # wait for job completion
