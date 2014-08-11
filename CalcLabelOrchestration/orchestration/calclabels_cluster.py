@@ -209,6 +209,8 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = watershedExe
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/watershed.out"
 
         # use current environment, use all slots for Ilastik
         jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
@@ -256,6 +258,8 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = stitchLabels 
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/stitch_" + str(self.num_stitch - 1) + ".out"
 
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
@@ -267,6 +271,8 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = computeGraph 
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/computegraph.out"
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
         args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", labelvolname, "--graph-name", graphname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
@@ -304,6 +310,8 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = computeProb
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/computeprob.out"
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
         jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--bodylist-name", self.session_location + "/body_list.json", "--graph-name", graphname, "--classifier-file", options.graphclassifier, "--num-chans", str(num_chans), "--dumpfile", "1"]
@@ -314,6 +322,8 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = agglomerateGraph 
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/agglomerate.out"
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
         args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
@@ -341,22 +351,76 @@ class Substack:
         # launch job on cluster
         jt = cluster_session.createJobTemplate()
         jt.remoteCommand = commitLabels 
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/commit.out"
 
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location + "/configw.json"]
         return cluster_session.runJob(jt)
 
+# handles messages with the outside world
+class Message:
+    def __init__(self, url):
+        self.url = url
+        self.messagestr = ""
 
+    def write_status(self, current_message=""):
+        wrapped_message = "<html>"
+        wrapped_message += self.messagestr
+        wrapped_message += "<br>"
+        if current_message != "":
+            wrapped_message += "<b>Current Status: " + current_message + "</b>"
+        wrapped_message += "</html>"
+        requests.post(self.url, data=wrapped_message,
+                headers={'content-type': 'text/html'})
 
+def wait_for_jobs(cluster_session, job_ids, message, job_desc):
+    completed = set()
+    running = set()
+    not_completed = set(job_ids)
+    job_times = {}
+    for job_id in job_ids:
+        job_times[job_id] = 0
 
-def orchestrate_labeling(options):
     start_time = time.time()
+
+    while len(not_completed) > 0:
+        time.sleep(1)
+        for job_id in job_ids:
+            status = cluster_session.jobStatus(job_id)
+            if status == drmaa.JobState.DONE or status == drmaa.JobState.FAILED:
+                running.add(job_id)
+                completed.add(job_id)
+                if job_id in not_completed:
+                    not_completed.remove(job_id)
+            elif status == drmaa.JobState.RUNNING:
+                job_times[job_id] += 1
+                running.add(job_id)
+        current_message = "<b>Job description: " + job_desc + "</b><br>"
+        total_time = time.time() - start_time
+        current_message += "Job execution time: " + str(total_time) + " seconds" + "<br>"
+        current_message += "Num waiting: " + str(len(job_ids) - len(running)) + "<br>"
+        current_message += "Num running: " + str(len(running)-len(completed)) + "<br>"
+        current_message += "Num completed: " + str(len(completed)) + "<br>"
+        message.write_status(current_message)
     
-    json_header = {'content-type': 'application/json'}  
-    
+    message.messagestr += "<b>Job description: " + job_desc + "</b><br>"
+    total_time = time.time() - start_time
+    message.messagestr += "Job execution time: " + str(total_time) + " seconds" + "<br>"
+    message.messagestr += "Num completed jobs: " + str(len(completed)) + "<br>"
+    total_val = 0
+    for jobid, val in job_times.items():
+        total_val += val
+    message.messagestr += "Average runtime per job: " + str(total_val/len(completed)) + " seconds<br>"
+    message.write_status()
+
+def orchestrate_labeling(options, message):
+    start_time = time.time()
+    json_header = {'content-type': 'text/html'}
+
     # write status 'started' to DVID
-    requests.post(options.callback, data='{"status": "started"}', headers=json_header)
+    message.write_status("starting job")
 
     # make sure substacks are not smaller than this size in one dimension
     smallest_allowed = 50
@@ -445,10 +509,10 @@ def orchestrate_labeling(options):
             #time.sleep(3) # will be handled by throttled command shortly making this moot
 
         # wait for job completion
-        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
-      
+        wait_for_jobs(cluster_session, job_ids, message, "watershed")
+
         # write status: 'performed watershed'
-        #requests.post(options.callback, data='{"status": "generated initial labels"}', headers=json_header)
+        message.write_status("generated initial labels") 
    
         # launch neuroproof segmentation jobs
         job_ids = []
@@ -457,10 +521,10 @@ def orchestrate_labeling(options):
             job_ids.append(substack.launch_agglomerate(cluster_session, options))
 
         # wait for job completion
-        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+        wait_for_jobs(cluster_session, job_ids, message, "agglomerate")
 
         # write status: 'performed watershed'
-        requests.post(options.callback, data='{"status": "performed agglomeration"}', headers=json_header)
+        message.write_status("performed agglomeration") 
 
         # launch reduce jobs and wait
         job_ids = []
@@ -471,10 +535,10 @@ def orchestrate_labeling(options):
                     job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
         
         # wait for job completion
-        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+        wait_for_jobs(cluster_session, job_ids, message, "stitch")
 
         # write status: 'stitched watershed'
-        requests.post(options.callback, data='{"status": "stitched labels"}', headers=json_header)
+        message.write_status("stitched labels") 
     
         # collect merges, relabels, etc
         id_offset = 0
@@ -528,7 +592,9 @@ def orchestrate_labeling(options):
             job_ids.append(substack.launch_write_job(cluster_session, config))
 
         # wait for job completion
-        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+        wait_for_jobs(cluster_session, job_ids, message, "write-labels")
+        # write status: 'stitched watershed'
+        message.write_status("wrote labels") 
     
     # always compute graph
     # create graph type
@@ -550,7 +616,7 @@ def orchestrate_labeling(options):
         job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
 
     # wait for job completion
-    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+    wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
 
     # only compute probs if this was a segmentation run
     if doprediction:
@@ -572,19 +638,18 @@ def orchestrate_labeling(options):
             # choose random set of vertices
             # spawn cluster job for computing probs
             job_ids.append(substack.launch_compute_probs(cluster_session, options, vertices[start:start+incr], graphname))
-            time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
+            #time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
             start += incr
 
         # wait for job completion
-        cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+        wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
 
 
     # calculate time
     total_time = time.time() - start_time
-    json_str = '{"status": "finished", "runtime": %f}' % total_time
 
     # write status: 'finished'
-    requests.post(options.callback, data=json_str, headers=json_header)
+    message.write_status("<b>Successfully finished in " + str(total_time) + " seconds</b>") 
     cluster_session.exit()
    
 #parses information in config json, assume classifier and json location given directory
@@ -597,10 +662,10 @@ def execute(args):
     config_data = json.load(open(args.session_location + "/" + jsonName))
      
     options = CommandOptions(config_data, args.session_location)
+    message = Message(options.callback)
     try:
-        orchestrate_labeling(options)
+        orchestrate_labeling(options, message)
     except Exception, e:
         print e
-        requests.post(options.callback, data=str(e), headers={'content-type': 'application/octet-stream'})
-        
+        message.write_status("FAIL: " + str(e))
 

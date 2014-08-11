@@ -48,7 +48,7 @@ information should be stored in the DVID key value titled 'annotations'.
 ##TODO
 
 * Regression and integration testing
-* Add robust loggging and some performance benchmarking (runtime for different processes, memory usage, etc) -- return webpage with stats and errors to user
+* Improve web-page input validation to make tool easier to use
 * Refactor backend orchestrating code (CalcLabelOrchestration) in favor of cluster workflow developed in Apache Spark
 * Allow for flexible plug-n-play interface for calling different support algorithms
 * Create a [buildem](https://github.com/janelia-flyem/buildem) or generic install for suite of tools

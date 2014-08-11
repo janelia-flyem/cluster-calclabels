@@ -149,6 +149,29 @@ func frontHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, formHTMLsub)
 }
 
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	pathlist, _, err := parseURI(r, "/jobstatus/")
+	if err != nil {
+		badRequest(w, "Error: incorrectly formatted request")
+                return
+        }
+        dvidkey := strings.Join(pathlist[1:], "/")
+        dvidkey = "http://" + dvidkey
+        resp, err := http.Get(dvidkey)
+        if err != nil || resp.StatusCode != 200 {
+            badRequest(w, "DVID job status URI could not be read")
+            return
+        }
+        defer resp.Body.Close()
+        bytes, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+            badRequest(w, "DVID response could not be read")
+            return
+        }
+        fmt.Fprintf(w, string(bytes))
+}        
+	
+
 // formHandler handles post request to "/formhandler" from the web interface
 func formHandler(w http.ResponseWriter, r *http.Request) {
 	pathlist, requestType, err := parseURI(r, "/formhandler/")
@@ -432,6 +455,9 @@ func Serve(proxyserver string, port int, config_file string, directory string) {
 
 	// handle form inputs
 	http.HandleFunc("/formhandler/", formHandler)
+
+        // show updates to job status
+	http.HandleFunc("/jobstatus/", statusHandler)
 
 	// perform calclabel service
 	http.HandleFunc(calclabelsPath, calclabelsHandler)

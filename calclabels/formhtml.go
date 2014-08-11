@@ -8,6 +8,8 @@ const formHTML=`
 <script type="text/javascript" src="//www.google.com/jsapi"></script>
 
 <script>
+var result_location = "";
+
 function segSelect(){
     var segspec = document.getElementById("segspecific");
     if (document.forms[0].algorithm.options[document.forms[0].algorithm.selectedIndex].value == "segment") {
@@ -44,9 +46,12 @@ Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="com
 <hr>
 <br>
 <div id="status"></div><br>
+<div id="results"></div><br>
 </div>
 
 <script>
+    setInterval(loadUpdate, 5000);
+
     $("#calclabels").submit(function(event) {                                                           
       event.preventDefault();
       $('#status').html("")
@@ -56,15 +61,29 @@ Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="com
         url: "/formhandler/",
         data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val()},
         success: function(data){
-            var result_location = data["result-callback"];
-            $('#status').html("Location of result on DVID: " + result_location)
+            result_location = data["result-callback"];
+            $('#status').html("Location of result on DVID: " + result_location);
         },
 
         error: function(msg) {
-                $('#status').html("Error Processing Results: " + msg.responseText)
+                $('#status').html("Error Processing Results: " + msg.responseText);
           }
         });
-    });                                                                                                  
+    });
+    function loadUpdate() {
+        if (result_location != "") {
+            $.ajax({
+                type: "GET",
+                url: "/jobstatus/" + result_location,
+                success: function(data){
+                    $('#results').html(data);
+                },
+                error: function(msg) {
+                    $('#results').html("No response for callback");
+                }
+            });
+        }      
+    }                                                                                                
 </script>                                                                                                
 </html>                                  
 `
