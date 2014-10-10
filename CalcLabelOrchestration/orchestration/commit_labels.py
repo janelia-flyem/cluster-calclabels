@@ -52,7 +52,7 @@ def execute(argv):
     labels = labels.ravel().copy()
     labels_data = '<' + 'Q'*len(labels)
     labels_bin = struct.pack(labels_data, *labels)
-    
+   
     rfile = args.config_file + ".response"
 
     completed = False

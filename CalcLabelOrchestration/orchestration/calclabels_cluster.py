@@ -87,13 +87,14 @@ class Substack:
     # assume line[0] < line[1] and add border in calculation 
     def intersects(self, line1, line2):
         pt1, pt2 = line1[0], line1[1]
-        pt1 -= self.border
-        pt2 += self.border
+        #pt1 -= self.border
+        #pt2 += self.border
         pt1_2, pt2_2 = line2[0], line2[1]
-        pt1_2 -= self.border
-        pt2_2 += self.border
+        #pt1_2 -= self.border
+        #pt2_2 += self.border
         
-        if pt1_2 < pt2 and pt2_2 > pt1:
+        #if pt1_2 < pt2 and pt2_2 > pt1:
+        if (pt1_2 < pt2 and pt1_2 >= pt1) or (pt2_2 <= pt2 and pt2_2 > pt1):
             return True
         return False 
 
@@ -107,7 +108,8 @@ class Substack:
         linez2 = [substack2.roi.z1, substack2.roi.z2]
        
         # check intersection
-        if self.intersects(linex1, linex2) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2):
+        #if self.intersects(linex1, linex2) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2):
+        if (self.touches(linex1[0], linex1[1], linex2[0], linex2[1]) and self.intersects(liney1, liney2) and self.intersects(linez1, linez2)) or (self.touches(liney1[0], liney1[1], liney2[0], liney2[1]) and self.intersects(linex1, linex2) and self.intersects(linez1, linez2)) or (self.touches(linez1[0], linez1[1], linez2[0], linez2[1]) and self.intersects(liney1, liney2) and self.intersects(linex1, linex2)):
             return True 
        
         return False
@@ -377,6 +379,9 @@ class Message:
                 headers={'content-type': 'text/html'})
 
 def wait_for_jobs(cluster_session, job_ids, message, job_desc):
+    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+    return
+    
     completed = set()
     running = set()
     not_completed = set(job_ids)
@@ -477,23 +482,32 @@ def orchestrate_labeling(options, message):
                     substackid += 1 
     else:
         # grab roi
-        # ?! update correct URL and json interface
-        r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + options.roi + "?substack-size=" + str(options.job_size)) 
+        # !! manual ROIs (substack lists) can be stored in a keyvalue "roi" with key "partition"
+        # ?! pass only real ROIs to Ilastik, so gray can be extracted -- add "?roi=blah" in gala/ilastik datasrc
+        # ?! job size should be multiples of 32 if using ROI, unless ROI specifies its own partition size
+        r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + options.roi + "/partition?batchsize=" + str(options.job_size/32)) 
         substack_data = r.json()
-        for substack in substack_data["substacks"]:
-            roi = Bbox(substack[0], substack[1], substack[2],
-                    substack[0] + options.job_size, substack[1] + options.job_size,
-                    substack[2] + options.job_size)  
+        for subvolume in substack_data["Subvolumes"]:
+            substack = subvolume["MinPoint"]
+            roi = None
+            if "Sizes" in subvolume:
+                sizes = subvolume["Sizes"]
+                roi = Bbox(substack[0], substack[1], substack[2],
+                        substack[0] + sizes[0], substack[1] + sizes[1],
+                        substack[2] + sizes[2])  
+            else:
+                roi = Bbox(substack[0], substack[1], substack[2],
+                        substack[0] + options.job_size, substack[1] + options.job_size,
+                        substack[2] + options.job_size)  
             substacks.append(Substack(substackid, roi, options.overlap_size/2))
-            substackid += 1 
+            substackid += 1
 
     # create drmaa session (wait for all jobs to finish for now)
     cluster_session = drmaa.Session()
     cluster_session.initialize()
-
+    
     if options.algorithm == "segment":
         # read synapse file and catch error if not there
-        
         synapseread = False
         try:
             # create synapse assignments if available
@@ -506,7 +520,7 @@ def orchestrate_labeling(options, message):
                 substack.load_local_synapse_file(data)
         except Exception, e:
             pass
-
+        
         # load default config
         config = {}
         # assume datatype is called "grayscale"
@@ -592,8 +606,13 @@ def orchestrate_labeling(options, message):
         body2body = zip(body1body2.keys(), body1body2.values())
 
         # create label name type
-        dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labels64/" + options.labelname
-        requests.post(dataset_name, data='{}', headers=json_header) 
+        dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
+        
+        req_json = {}
+        req_json["typename"] = "labels64"
+        req_json["dataname"] = options.labelname
+        req_str = json.dumps(req_json)
+        requests.post(dataset_name, data=req_str, headers=json_header) 
         
         # launch relabel and write jobs and wait 
         config = {}
@@ -602,16 +621,27 @@ def orchestrate_labeling(options, message):
         config["roi"] = options.roi
 
         job_ids = []
+        job_num = 0
         for substack in substacks:
             # spawn cluster job
-            # ?! modify commit label script to handle ROI if provided
+            # ?! modify commit label script to handle ROI if provided -- but not when provided just an endpoint ??
+            job_num += 1
             job_ids.append(substack.launch_write_job(cluster_session, config))
+            if len(job_ids) == 10: 
+                wait_for_jobs(cluster_session, job_ids, message, "write-labels: " + str(job_num) + " of " + str(len(substacks)))
+                job_ids = []
 
+        if len(job_ids) > 0: 
+            wait_for_jobs(cluster_session, job_ids, message, "write-labels: " + str(job_num) + " of " + str(len(substacks)))
+        
         # wait for job completion
-        wait_for_jobs(cluster_session, job_ids, message, "write-labels")
+        #wait_for_jobs(cluster_session, job_ids, message, "write-labels")
         # write status: 'stitched watershed'
         message.write_status("wrote labels") 
-    
+    else:
+        for substack in substacks:
+            substack.create_directory(options.session_location)
+
     # always compute graph
     # create graph type
     
@@ -619,12 +649,20 @@ def orchestrate_labeling(options, message):
     labelvolname = "bodies"
     doprediction = False
     if options.algorithm == "segment":
-        graphname = graphname + "-graph"
+        graphname = graphname + "graph"
         labelvolname = options.labelname 
-        doprediction = True
+        try:
+            fin = open(options.graphclassifier)
+            doprediction = True
+        except Exception, e:
+            pass
 
-    dataset_name = options.dvidserver + "/api/dataset/"+ options.uuid + "/new/labelgraph/" + graphname 
-    requests.post(dataset_name, data='{}', headers=json_header) 
+    dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
+    req_json = {}
+    req_json["typename"] = "labelgraph"
+    req_json["dataname"] = graphname
+    req_str = json.dumps(req_json)
+    requests.post(dataset_name, data=req_str, headers=json_header) 
    
     job_ids = []
     for substack in substacks:

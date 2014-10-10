@@ -156,7 +156,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
                 return
         }
         dvidkey := strings.Join(pathlist[1:], "/")
-        dvidkey = "http://" + dvidkey
+        dvidkey = "http://" + dvidkey + "?interactive=false"
         resp, err := http.Get(dvidkey)
         if err != nil || resp.StatusCode != 200 {
             badRequest(w, "DVID job status URI could not be read")
@@ -224,6 +224,7 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
         json_data["roi"] = r.FormValue("roi")
 	json_data["classifier"] = r.FormValue("classifier")
 	json_data["agglomclassifier"] = r.FormValue("agglomclassifier")
+	json_data["agglomfeaturefile"] = r.FormValue("agglomfeaturefile")
 	json_data["graphclassifier"] = r.FormValue("graphclassifier")
 	json_data["label-name"] = r.FormValue("labelname")
 	json_data["algorithm"] = r.FormValue("algorithm")
@@ -310,23 +311,44 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
                 }
                 ioutil.WriteFile(session_dir+agglomclassifierName, bytes, 0644)
         
-                graphclassifier := json_data["graphclassifier"].(string)
-                graphclassifier_url := baseurl + classifierURI + graphclassifier
+                // dump feature file
+                agglomfeature := json_data["agglomfeaturefile"].(string)
+                if agglomfeature != "" {
+                        agglomfeature_url := baseurl + classifierURI + agglomfeature
 
-                // dump classifier to disk under session id (default to specified directory)
-                resp, err = http.Get(graphclassifier_url)
-                if err != nil || resp.StatusCode != 200 {
-                        badRequest(w, "Classifier could not be read from "+graphclassifier_url)
-                        return
+                        // dump classifier to disk under session id (default to specified directory)
+                        resp, err = http.Get(agglomfeature_url)
+                        if err != nil || resp.StatusCode != 200 {
+                                badRequest(w, "Classifier features could not be read from "+agglomfeature_url)
+                                return
+                        }
+                        defer resp.Body.Close()
+                        bytes, err = ioutil.ReadAll(resp.Body)
+                        if err != nil {
+                                badRequest(w, "Classifier could not be read from "+agglomfeature_url)
+                                return
+                        }
+                        ioutil.WriteFile(session_dir+agglomfeature, bytes, 0644)
                 }
-                defer resp.Body.Close()
-                bytes, err = ioutil.ReadAll(resp.Body)
-                if err != nil {
-                        badRequest(w, "Classifier could not be read from "+graphclassifier_url)
-                        return
+                
+                graphclassifier := json_data["graphclassifier"].(string)
+                if graphclassifier != "" {
+                        graphclassifier_url := baseurl + classifierURI + graphclassifier
+
+                        // dump classifier to disk under session id (default to specified directory)
+                        resp, err = http.Get(graphclassifier_url)
+                        if err != nil || resp.StatusCode != 200 {
+                                badRequest(w, "Classifier could not be read from "+graphclassifier_url)
+                                return
+                        }
+                        defer resp.Body.Close()
+                        bytes, err = ioutil.ReadAll(resp.Body)
+                        if err != nil {
+                                badRequest(w, "Classifier could not be read from "+graphclassifier_url)
+                                return
+                        }
+                        ioutil.WriteFile(session_dir+graphclassifierName, bytes, 0644)
                 }
-                ioutil.WriteFile(session_dir+graphclassifierName, bytes, 0644)
-        
 
                 // dump synapses file if it exists
                 synapses := json_data["synapses"].(string)
@@ -363,10 +385,12 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	json_data["result-callback"] = keyval_url
 
 	// create segstatus uri (if not created) and write status
-	payload := `{}`
+	payload := `{"typename" : "keyvalue", "dataname" : "`
+        payload += segStatusURI
+        payload += `"}`
 	payload_rdr := strings.NewReader(payload)
-	http.Post(dvidserver+"/api/dataset/"+uuid+"/new/keyvalue/"+segStatusURI, "application/json", payload_rdr)
-	payload = `{"status" : "not started"}`
+        http.Post(dvidserver+"/api/repo/"+uuid+"/instance", "application/json", payload_rdr)
+        payload = `{"status" : "not started"}`
 	payload_rdr = strings.NewReader(payload)
 	http.Post(keyval_url, "application/json", payload_rdr)
 

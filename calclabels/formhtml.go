@@ -37,6 +37,7 @@ ROI name: <input type="text" id="roi"><br>
 <div id="segspecific" style="visibility: hidden">
 Boundary classifier name (stored on DVID at classifiers/): <input type="text" id="classifier"><br>
 Agglomeration classifier name (XML stored on DVID at classifiers/): <input type="text" id="agglomclassifier"><br>
+Agglomeration feature file [OPTIONAL] (txt stored on DVID at classifiers/): <input type="text" id="agglomfeaturefile"><br>
 Graph classifier name (H5 stored on DVID at classifiers/): <input type="text" id="graphclassifier"><br>
 Synapse file [OPTIONAL] (JSON stored on DVID at annotations/): <input type="text" id="synapses"><br>
 </div>
@@ -61,7 +62,7 @@ Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="com
       $.ajax({
         type: "POST",
         url: "/formhandler/",
-        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val(), roi: $('#roi').val()},
+        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), agglomfeaturefile: $('#agglomfeaturefile').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val(), roi: $('#roi').val()},
         success: function(data){
             result_location = data["result-callback"];
             $('#status').html("Location of result on DVID: " + result_location);

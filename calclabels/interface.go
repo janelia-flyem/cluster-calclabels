@@ -66,6 +66,11 @@ title: Cluster Calculate Labels
                 "type": "string",
                 "default": ""
               },
+              "agglomfeaturefile": {
+                "description": "Name of feature text file for agglomeration",
+                "type": "string",
+                "default": ""
+              },
               "graphclassifier": {
                 "description": "Name of graph classifier to compute edge uncertainty",
                 "type": "string",
