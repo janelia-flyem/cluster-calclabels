@@ -5,6 +5,8 @@
         "PATH=/groups/scheffer/home/plazas/segmentation_system/buildem3/bin:/usr/bin",
         "PYTHONPATH=/groups/scheffer/home/plazas/segmentation_system/buildem3/lib",
         "LD_LIBRARY_PATH=/usr/local/gcc/lib64:groups/scheffer/home/plazas/segmentation_system/buildem3/lib",
+        "LAZYFLOW_THREADS=4",
+        "LAZYFLOW_TOTAL_RAM_MB=30000",
         "DRMAA_LIBRARY_PATH=/sge/current/lib/lx-amd64/libdrmaa.so",
         "SGE_QMASTER_PORT=6464",
         "SGE_EXECD_PORT=6463",

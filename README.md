@@ -36,6 +36,8 @@ The cluster workflow calls the following tools which need to be accessible to ea
 * NeuroProof: build region adjacency graph (RAG) from labels (labels->graph)
 * NeuroProof: generate uncertainty between graph edges (graph->graph)
 
+(Note: Gala should be set to the 'watershed' branch and installed using buildem.  CalcLabelOrchestration can be installed using 'python setup.py build; python setup.py install' with the buildem's python.  NeuroProof should be installed in buildem.)
+
 ## Other Details
 
 For this script to work properly on the cluster, automatic ssh access must be available from the http server to the orchestrating script.  When launching the server,
