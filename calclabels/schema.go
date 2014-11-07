@@ -34,6 +34,21 @@ const calclabelsSchema = `
       "type": "integer",
       "default": 500
     },
+    "seed-size": {
+      "description": "Size of the watershed seed size threshold used (default: 5)",
+      "type": "integer",
+      "default": 5
+    },
+    "agglom-threshold": {
+      "description": "Threshold for agglomeration (default: 0.2)",
+      "type": "number",
+      "default": 0.2
+    },
+    "stitch-mode": {
+      "description": "Aggressive for segmentation stitching (0 is no stitch, 3 is most aggressive stitching) (default: 2)",
+      "type": "integer",
+      "default": 2
+    },
     "overlap-size": {
       "description": "Pixel overlap between adjacent sub-regions used in stitching (default: 40)",
       "type": "integer",

@@ -61,61 +61,113 @@ def execute(argv):
     body2body = {}
 
     label2_bodies = numpy.unique(labels2)
-    
-    #"""
-    for body in label2_bodies:
-        body2body[body] = {}
 
-    # traverse volume to find maximum overlap
-    for (z,y,x), body1 in numpy.ndenumerate(labels1):
-        body2 = labels2[z,y,x]
-        if body1 not in body2body[body2]:
-            body2body[body2][body1] = 0
-        body2body[body2][body1] += 1
-    #"""
+    # 0 is off, 1 is very conservative (high percentages and no bridging), 2 is less conservative (no bridging), 3 is the most liberal (some bridging allowed if overlap greater than X and overlap threshold)
+    mode = json_data["stitching-mode"]
+    hard_lb = 50
+    liberal_lb = 1000
+    conservative_overlap = 0.90
 
-    already_merged = set()
+    if mode > 0:
+        for body in label2_bodies:
+            body2body[body] = {}
+
+        # traverse volume to find maximum overlap
+        for (z,y,x), body1 in numpy.ndenumerate(labels1):
+            body2 = labels2[z,y,x]
+            if body1 not in body2body[body2]:
+                body2body[body2][body1] = 0
+            body2body[body2][body1] += 1
+
 
     # create merge list 
     merge_list = []
+    mutual_list = {}
+    retired_list = set()
+
+    small_overlap_prune = 0
+    conservative_prune = 0
+    aggressive_add = 0
+    not_mutual = 0
+
     for body2, bodydict in body2body.items():
         if body2 in eligible_bodies:
             bodysave = -1
-            max_val = 0
+            max_val = hard_lb
+            total_val = 0
             for body1, val in bodydict.items():
+                total_val += val
                 if val > max_val:
                     bodysave = body1
                     max_val = val
-            already_merged.add(int(bodysave))
-            merge_list.append([int(bodysave), int(body2)])
-  
+            if bodysave == -1:
+                small_overlap_prune += 1
+            elif (mode == 1) and (max_val / float(total_val) < conservative_overlap):
+                conservative_prune += 1
+            elif (mode == 3) and (max_val / float(total_val) > conservative_overlap) and (max_val > liberal_lb):
+                merge_list.append([int(bodysave), int(body2)])
+                # do not add
+                retired_list.add((int(bodysave), int(body2))) 
+                aggressive_add += 1
+            else:
+                if int(bodysave) not in mutual_list:
+                    mutual_list[int(bodysave)] = {}
+                mutual_list[int(bodysave)][int(body2)] = max_val
+               
 
     eligible_bodies = set(numpy.unique(labels1[z1:z2, y1:y2, x1:x2]))
     body2body = {}
-    #"""
-    label1_bodies = numpy.unique(labels1)
-    for body in label1_bodies:
-        body2body[body] = {}
+    
+    if mode > 0:
+        label1_bodies = numpy.unique(labels1)
+        for body in label1_bodies:
+            body2body[body] = {}
 
-    # traverse volume to find maximum overlap
-    for (z,y,x), body1 in numpy.ndenumerate(labels1):
-        body2 = labels2[z,y,x]
-        if body2 not in body2body[body1]:
-            body2body[body1][body2] = 0
-        body2body[body1][body2] += 1
-    #"""
+        # traverse volume to find maximum overlap
+        for (z,y,x), body1 in numpy.ndenumerate(labels1):
+            body2 = labels2[z,y,x]
+            if body2 not in body2body[body1]:
+                body2body[body1][body2] = 0
+            body2body[body1][body2] += 1
+    
     # add to merge list 
     for body1, bodydict in body2body.items():
-        if body1 in eligible_bodies and body1 not in already_merged:
+        if body1 in eligible_bodies:
             bodysave = -1
-            max_val = 0
+            max_val = hard_lb
+            total_val = 0
             for body2, val in bodydict.items():
+                total_val += val
                 if val > max_val:
                     bodysave = body2
                     max_val = val
-            merge_list.append([int(body1), int(bodysave)])
 
-
+            if (int(body1), int(bodysave)) in retired_list:
+                # already in list
+                pass
+            elif bodysave == -1:
+                small_overlap_prune += 1
+            elif (mode == 1) and (max_val / float(total_val) < conservative_overlap):
+                conservative_prune += 1
+            elif (mode == 3) and (max_val / float(total_val) > conservative_overlap) and (max_val > liberal_lb):
+                merge_list.append([int(body1), int(bodysave)])
+                aggressive_add += 1
+            elif int(body1) in mutual_list:
+                partners = mutual_list[int(body1)]
+                if int(bodysave) in partners:
+                    merge_list.append([int(body1), int(bodysave)])
+                else:
+                    not_mutual += 1
+            else:
+                not_mutual += 1
+                    
+                    
+    # print stats
+    print "Small overlap prune: ", small_overlap_prune
+    print "Conservative (mode 1) overlap percentage prune: ", conservative_prune
+    print "Aggressive adding (mode 3) using overlap percentage for only one side: ", aggressive_add
+    print "No candidates merge found because not mutual: ", not_mutual
+    print "Num mergers: ", len(merge_list)
 
     # output json
     outjson = {}

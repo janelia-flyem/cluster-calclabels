@@ -53,6 +53,10 @@ class CommandOptions:
         self.bbox1 = config_data["bbox1"]
         self.bbox2 = config_data["bbox2"]
         self.algorithm = config_data["algorithm"]
+        self.stitch_mode = config_data["stitch-mode"]
+        self.seed_size = config_data["seed-size"]
+        self.agglom_threshold = config_data["agglom-threshold"]
+
 
 def num_divs(total_span, substack_span, min_allowed):
     num = total_span / substack_span 
@@ -203,6 +207,7 @@ class Substack:
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
+
         if self.synapsedata:
             config["synapse-file"] = self.session_location + "/synapses_local.json"
         fout = open(self.session_location + "/config.json", 'w')
@@ -226,7 +231,7 @@ class Substack:
         return False
     
     # launch substack stitch command
-    def launch_stitch_job(self, substack2, cluster_session):
+    def launch_stitch_job(self, substack2, cluster_session, options):
         config = {}
         config["bbox1"] = [self.roi.x1-self.border, self.roi.y1-self.border, self.roi.z1-self.border]
         config["bbox2"] = [self.roi.x2+self.border, self.roi.y2+self.border, self.roi.z2+self.border]
@@ -240,6 +245,8 @@ class Substack:
         configname = self.session_location + "/config_stitch" + str(self.num_stitch) + ".json"
         config["output"] = self.session_location + "/merge_" + str(self.num_stitch) + ".json"
         config["id"] = substack2.substackid
+
+        config["stitching-mode"] = options.stitch_mode
 
         # axis where substacks touch, across which bodies need to be examined 
         axis = ""
@@ -318,6 +325,7 @@ class Substack:
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
         jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--bodylist-name", self.session_location + "/body_list.json", "--graph-name", graphname, "--classifier-file", options.graphclassifier, "--num-chans", str(num_chans), "--dumpfile", "1"]
+        print jt.args
 
         return cluster_session.runJob(jt)
 
@@ -329,7 +337,7 @@ class Substack:
         jt.outputPath = ":" + self.session_location + "/agglomerate.out"
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
-        args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5"]
+        args = [self.session_location + "/supervoxels.h5", self.session_location + "/STACKED_prediction.h5", options.agglomclassifier, "--output-file", self.session_location + "/segmentation.h5", "--threshold", str(options.agglom_threshold)]
        
         # add synapse file if it exists
         if self.synapsedata:
@@ -501,11 +509,13 @@ def orchestrate_labeling(options, message):
                         substack[2] + options.job_size)  
             substacks.append(Substack(substackid, roi, options.overlap_size/2))
             substackid += 1
+            #if substackid == 4:
+            #    break
 
     # create drmaa session (wait for all jobs to finish for now)
     cluster_session = drmaa.Session()
     cluster_session.initialize()
-    
+  
     if options.algorithm == "segment":
         # read synapse file and catch error if not there
         synapseread = False
@@ -526,18 +536,31 @@ def orchestrate_labeling(options, message):
         # assume datatype is called "grayscale"
         config["datasrc"] = options.dvidserver + "/api/node/" + options.uuid + "/grayscale" 
         config["classifier"] = options.classifier
+        config["seed-size"] = options.seed_size
+
+        # ?! cannot enable ROI fetch until I figure out how to zero out watershed
+        #if options.roi != "":
+        #    config["roi"] = options.roi
 
         job_ids = []
+        job_num1 = 0
         for substack in substacks:
             if not synapseread:
                 substack.create_directory(options.session_location)
             # spawn cluster job -- return handler?
+            job_num1 += 1
             job_ids.append(substack.launch_label_job(cluster_session, config))
+            
+            if len(job_ids) == 100: 
+                wait_for_jobs(cluster_session, job_ids, message, "watershed: " + str(job_num1) + " of " + str(len(substacks)))
+                job_ids = []
+            
             # throttling now supported
             #time.sleep(3) # will be handled by throttled command shortly making this moot
 
         # wait for job completion
-        wait_for_jobs(cluster_session, job_ids, message, "watershed")
+        if len(job_ids) > 0: 
+            wait_for_jobs(cluster_session, job_ids, message, "watershed")
 
         # write status: 'performed watershed'
         message.write_status("generated initial labels") 
@@ -560,7 +583,7 @@ def orchestrate_labeling(options, message):
         for i in range(0, len(substacks)-1):
             for j in range(i+1, len(substacks)):
                 if substacks[i].isoverlap(substacks[j]):
-                    job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session))
+                    job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session, options))
         
         # wait for job completion
         wait_for_jobs(cluster_session, job_ids, message, "stitch")
@@ -618,13 +641,15 @@ def orchestrate_labeling(options, message):
         config = {}
         config["remap"] = body2body 
         config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
-        config["roi"] = options.roi
+        # ?! roi working but disabled
+        #config["roi"] = options.roi
+        config["roi"] = "" # options.roi
 
         job_ids = []
         job_num = 0
         for substack in substacks:
             # spawn cluster job
-            # ?! modify commit label script to handle ROI if provided -- but not when provided just an endpoint ??
+            # ?! modify commit label script to not handle ROI if provided just an endpoint ??
             job_num += 1
             job_ids.append(substack.launch_write_job(cluster_session, config))
             if len(job_ids) == 10: 
@@ -644,7 +669,6 @@ def orchestrate_labeling(options, message):
 
     # always compute graph
     # create graph type
-    
     graphname = options.labelname 
     labelvolname = "bodies"
     doprediction = False
@@ -655,7 +679,12 @@ def orchestrate_labeling(options, message):
             fin = open(options.graphclassifier)
             doprediction = True
         except Exception, e:
-            pass
+            try:
+                fin = open(options.agglomclassifier)
+                doprediction = True
+                options.graphclassifier = options.session_location + "/" + agglomclassifierName
+            except Exception, e:
+                pass
 
     dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
     req_json = {}
@@ -694,9 +723,13 @@ def orchestrate_labeling(options, message):
             job_ids.append(substack.launch_compute_probs(cluster_session, options, vertices[start:start+incr], graphname))
             #time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
             start += incr
+            if len(job_ids) == 10:
+                wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
+                job_ids = []
 
-        # wait for job completion
-        wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
+        if len(job_ids) > 0: 
+            # wait for job completion
+            wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
 
 
     # calculate time

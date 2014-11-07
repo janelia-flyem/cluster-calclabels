@@ -38,8 +38,12 @@ ROI name: <input type="text" id="roi"><br>
 Boundary classifier name (stored on DVID at classifiers/): <input type="text" id="classifier"><br>
 Agglomeration classifier name (XML stored on DVID at classifiers/): <input type="text" id="agglomclassifier"><br>
 Agglomeration feature file [OPTIONAL] (txt stored on DVID at classifiers/): <input type="text" id="agglomfeaturefile"><br>
-Graph classifier name (H5 stored on DVID at classifiers/): <input type="text" id="graphclassifier"><br>
+Graph classifier name [OPTIONAL] (H5 stored on DVID at classifiers/): <input type="text" id="graphclassifier"><br>
 Synapse file [OPTIONAL] (JSON stored on DVID at annotations/): <input type="text" id="synapses"><br>
+
+Stitch mode (0 means no stitch, 3 is most aggressive stitch):  <input type="text" id="stitchmode" value="2"><br>
+Seed size: <input type="text" id="seedsize" value="5"><br>
+Agglom threshold: <input type="text" id="agglomthreshold" value="0.2"><br>
 </div>
 
 Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="compute-graph" selected="selected">Compute Graph Only</option><option value="segment">Segment</option></select><br>
@@ -62,7 +66,7 @@ Algorithm name: <select id="algorithm" onchange="segSelect()"><option value="com
       $.ajax({
         type: "POST",
         url: "/formhandler/",
-        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), agglomfeaturefile: $('#agglomfeaturefile').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val(), roi: $('#roi').val()},
+        data: {uuid: $('#uuid').val(), bbox1: $('#bbox1').val(), bbox2: $('#bbox2').val(), classifier: $('#classifier').val(), agglomclassifier: $('#agglomclassifier').val(), agglomfeaturefile: $('#agglomfeaturefile').val(), labelname: $('#labelname').val(), dvidserver: $('#dvidserver').val(), algorithm: $('#algorithm').val(), jobsize: $('#jobsize').val(), stitchmode: $('#stitchmode').val(), seedsize: $('#seedsize').val(), agglomthreshold: $('#agglomthreshold').val(), graphclassifier: $('#graphclassifier').val(), synapses: $('#synapses').val(), roi: $('#roi').val()},
         success: function(data){
             result_location = data["result-callback"];
             $('#status').html("Location of result on DVID: " + result_location);

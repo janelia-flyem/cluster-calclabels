@@ -229,6 +229,9 @@ func formHandler(w http.ResponseWriter, r *http.Request) {
 	json_data["label-name"] = r.FormValue("labelname")
 	json_data["algorithm"] = r.FormValue("algorithm")
 	json_data["job-size"], _ = strconv.Atoi(r.FormValue("jobsize"))
+	json_data["seed-size"], _ = strconv.Atoi(r.FormValue("seedsize"))
+	json_data["stitch-mode"], _ = strconv.Atoi(r.FormValue("stitchmode"))
+        json_data["agglom-threshold"], _ = strconv.ParseFloat(r.FormValue("agglomthreshold"), 32)
 
 	calcLabels(w, json_data)
 }

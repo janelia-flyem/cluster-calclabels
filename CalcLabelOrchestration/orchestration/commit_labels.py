@@ -20,6 +20,8 @@ def execute(argv):
     bufsz = json_data["border"]
     labels = labels[bufsz:-1*bufsz, bufsz:-1*bufsz, bufsz:-1*bufsz]
 
+    roi = json_data["roi"]
+
     # remapping is based off of an adjusted set of labels (if necessary)
     if json_data["offset"] != 0:
         labels = labels + json_data["offset"]
@@ -48,6 +50,9 @@ def execute(argv):
 
     # enable throttling
     write_location += "?throttle=on"
+
+    if roi != "":
+        write_location += "&roi=" + roi
 
     labels = labels.ravel().copy()
     labels_data = '<' + 'Q'*len(labels)
