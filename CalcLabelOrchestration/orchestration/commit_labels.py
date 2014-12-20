@@ -25,7 +25,9 @@ def execute(argv):
     # remapping is based off of an adjusted set of labels (if necessary)
     if json_data["offset"] != 0:
         labels = labels + json_data["offset"]
-   
+        # make sure 0 is 0
+        labels[labels == json_data["offset"]] = 0
+
     # json mapping should exist
     if len(json_data["remap"]) != 0:
         mapping_col = numpy.unique(labels)

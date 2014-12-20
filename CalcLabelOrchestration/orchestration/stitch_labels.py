@@ -70,11 +70,15 @@ def execute(argv):
 
     if mode > 0:
         for body in label2_bodies:
+            if body == 0:
+                continue
             body2body[body] = {}
 
         # traverse volume to find maximum overlap
         for (z,y,x), body1 in numpy.ndenumerate(labels1):
             body2 = labels2[z,y,x]
+            if body2 == 0 or body1 == 0:
+                continue
             if body1 not in body2body[body2]:
                 body2body[body2][body1] = 0
             body2body[body2][body1] += 1
@@ -121,11 +125,15 @@ def execute(argv):
     if mode > 0:
         label1_bodies = numpy.unique(labels1)
         for body in label1_bodies:
+            if body == 0:
+                continue
             body2body[body] = {}
 
         # traverse volume to find maximum overlap
         for (z,y,x), body1 in numpy.ndenumerate(labels1):
             body2 = labels2[z,y,x]
+            if body2 == 0 or body1 == 0:
+                continue
             if body2 not in body2body[body1]:
                 body2body[body1][body2] = 0
             body2body[body1][body2] += 1

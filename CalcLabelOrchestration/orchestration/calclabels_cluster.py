@@ -491,7 +491,7 @@ def orchestrate_labeling(options, message):
     else:
         # grab roi
         # !! manual ROIs (substack lists) can be stored in a keyvalue "roi" with key "partition"
-        # ?! pass only real ROIs to Ilastik, so gray can be extracted -- add "?roi=blah" in gala/ilastik datasrc
+        # pass only real ROIs to Ilastik, so gray can be extracted -- add "?roi=blah" in gala/ilastik datasrc
         # ?! job size should be multiples of 32 if using ROI, unless ROI specifies its own partition size
         r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + options.roi + "/partition?batchsize=" + str(options.job_size/32)) 
         substack_data = r.json()
@@ -535,12 +535,14 @@ def orchestrate_labeling(options, message):
         config = {}
         # assume datatype is called "grayscale"
         config["datasrc"] = options.dvidserver + "/api/node/" + options.uuid + "/grayscale" 
+        config["uuid"] = options.uuid
+        config["server"] = options.dvidserver
         config["classifier"] = options.classifier
         config["seed-size"] = options.seed_size
 
-        # ?! cannot enable ROI fetch until I figure out how to zero out watershed
-        #if options.roi != "":
-        #    config["roi"] = options.roi
+        # ROI zero outs watershed
+        if options.roi != "":
+            config["roi"] = options.roi
 
         job_ids = []
         job_num1 = 0
