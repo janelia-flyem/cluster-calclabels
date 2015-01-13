@@ -17,11 +17,13 @@ def execute(argv):
     labels = numpy.array(hfile['stack']).astype(numpy.uint64)
 
     # crop labels
-    bufsz = json_data["border"]
-    labels = labels[bufsz:-1*bufsz, bufsz:-1*bufsz, bufsz:-1*bufsz]
+    #bufsz = json_data["border"]
+    #labels = labels[bufsz:-1*bufsz, bufsz:-1*bufsz, bufsz:-1*bufsz]
 
     roi = json_data["roi"]
 
+    # do not remap in this function now
+    """
     # remapping is based off of an adjusted set of labels (if necessary)
     if json_data["offset"] != 0:
         labels = labels + json_data["offset"]
@@ -39,7 +41,8 @@ def execute(argv):
 
         vectorized_relabel = numpy.frompyfunc(label_mappings.__getitem__, 1, 1)
         labels = vectorized_relabel(labels).astype(numpy.uint64)
-    
+    """
+
     # write dvid volume
     # <server>/api/node/<UUID>/<labelname>/raw/0_1_2/
     write_location = json_data["write-location"] 

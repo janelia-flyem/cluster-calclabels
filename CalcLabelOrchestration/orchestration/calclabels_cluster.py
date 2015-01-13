@@ -28,6 +28,7 @@ graphclassifierName = "graphclassifier.h5"
 synapsesName = "synapses.json"
 jsonName = "config.json"
 watershedExe = "gala-watershed"
+remapLabels = "remap_labels"
 commitLabels = "commit_labels"
 computeGraph = "neuroproof_graph_build_dvid"
 computeProb = "neuroproof_agg_prob_dvid"
@@ -348,13 +349,36 @@ class Substack:
         #print jt.args
         return cluster_session.runJob(jt)
 
+    def launch_remap_job(self, cluster_session, config, base_location):
+        config["offset"] = self.id_offset
+        config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
+        config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
+        config["border"] = self.border
+        config["labels"] = self.session_location + "/segmentation.h5"
+        config["labelsout"] = self.session_location + "/segmentation2.h5"
+        
+        config["remapjson"] = base_location + "/remap.json" 
+        fout = open(self.session_location + "/configr.json", 'w')
+        fout.write(json.dumps(config, indent=4))
+        fout.close()
+
+        # launch job on cluster
+        jt = cluster_session.createJobTemplate()
+        jt.remoteCommand = remapLabels 
+        jt.joinFiles = True
+        jt.outputPath = ":" + self.session_location + "/remap.out"
+
+        # use current environment, need only one slot
+        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.args = [self.session_location + "/configr.json"]
+        return cluster_session.runJob(jt)
 
     def launch_write_job(self, cluster_session, config):
         config["offset"] = self.id_offset
         config["bbox1"] = [self.roi.x1, self.roi.y1, self.roi.z1]
         config["bbox2"] = [self.roi.x2, self.roi.y2, self.roi.z2]
         config["border"] = self.border
-        config["labels"] = self.session_location + "/segmentation.h5"
+        config["labels"] = self.session_location + "/segmentation2.h5"
         fout = open(self.session_location + "/configw.json", 'w')
         fout.write(json.dumps(config, indent=4))
         fout.close()
@@ -366,7 +390,7 @@ class Substack:
         jt.outputPath = ":" + self.session_location + "/commit.out"
 
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location + "/configw.json"]
         return cluster_session.runJob(jt)
 
@@ -507,6 +531,11 @@ def orchestrate_labeling(options, message):
                 roi = Bbox(substack[0], substack[1], substack[2],
                         substack[0] + options.job_size, substack[1] + options.job_size,
                         substack[2] + options.job_size)  
+   
+            # ?! ilastik doesn't support negative coordinates
+            if substack[0] < 20 or substack[1] < 20 or substack[2] < 20:
+                continue
+                
             substacks.append(Substack(substackid, roi, options.overlap_size/2))
             substackid += 1
             #if substackid == 4:
@@ -551,6 +580,7 @@ def orchestrate_labeling(options, message):
                 substack.create_directory(options.session_location)
             # spawn cluster job -- return handler?
             job_num1 += 1
+            
             job_ids.append(substack.launch_label_job(cluster_session, config))
             
             if len(job_ids) == 100: 
@@ -581,14 +611,20 @@ def orchestrate_labeling(options, message):
 
         # launch reduce jobs and wait
         job_ids = []
+        job_num = 0
         
         for i in range(0, len(substacks)-1):
             for j in range(i+1, len(substacks)):
                 if substacks[i].isoverlap(substacks[j]):
+                    job_num += 1
                     job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session, options))
+                    if len(job_ids) == 10000: 
+                        wait_for_jobs(cluster_session, job_ids, message, "stitch")
+                        job_ids = []
         
         # wait for job completion
-        wait_for_jobs(cluster_session, job_ids, message, "stitch")
+        if len(job_ids) > 0: 
+            wait_for_jobs(cluster_session, job_ids, message, "stitch")
 
         # write status: 'stitched watershed'
         message.write_status("stitched labels") 
@@ -627,7 +663,7 @@ def orchestrate_labeling(options, message):
                 for tbody in body2body1[body1]:
                     body2body1[body2].add(tbody)
                     body1body2[tbody] = body2
-        
+
         body2body = zip(body1body2.keys(), body1body2.values())
 
         # create label name type
@@ -641,12 +677,27 @@ def orchestrate_labeling(options, message):
         
         # launch relabel and write jobs and wait 
         config = {}
-        config["remap"] = body2body 
+        
+        # write mappings to one sport and then reference in remap job
+        #config["remap"] = body2body 
+        remapdata = {}
+        remapdata["remap"] = body2body
+        foutremap = open(options.session_location + "/remap.json", 'w')
+        foutremap.write(json.dumps(remapdata, indent=4))
+        foutremap.close()
+
         config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
-        # ?! roi working but disabled
+        # roi working but disabled
         #config["roi"] = options.roi
         config["roi"] = "" # options.roi
 
+        # remap -- no DVID calls so can run a massive job
+        job_ids = []
+        for substack in substacks:
+            job_ids.append(substack.launch_remap_job(cluster_session, config, options.session_location))
+        wait_for_jobs(cluster_session, job_ids, message, "remap-labels: " + str(job_num) + " of " + str(len(substacks)))
+
+        # commit
         job_ids = []
         job_num = 0
         for substack in substacks:
@@ -669,70 +720,71 @@ def orchestrate_labeling(options, message):
         for substack in substacks:
             substack.create_directory(options.session_location)
 
-    # always compute graph
-    # create graph type
-    graphname = options.labelname 
-    labelvolname = "bodies"
-    doprediction = False
-    if options.algorithm == "segment":
-        graphname = graphname + "graph"
-        labelvolname = options.labelname 
-        try:
-            fin = open(options.graphclassifier)
-            doprediction = True
-        except Exception, e:
+    # do not compute graph if the seg label ends with "nograph" -- kinda a hack
+    if not options.labelname.endswith("nograph"):
+        # always compute graph
+        # create graph type
+        graphname = options.labelname 
+        labelvolname = "bodies"
+        doprediction = False
+        if options.algorithm == "segment":
+            graphname = graphname + "graph"
+            labelvolname = options.labelname 
             try:
-                fin = open(options.agglomclassifier)
+                fin = open(options.graphclassifier)
                 doprediction = True
-                options.graphclassifier = options.session_location + "/" + agglomclassifierName
             except Exception, e:
-                pass
+                try:
+                    fin = open(options.agglomclassifier)
+                    doprediction = True
+                    options.graphclassifier = options.session_location + "/" + agglomclassifierName
+                except Exception, e:
+                    pass
 
-    dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
-    req_json = {}
-    req_json["typename"] = "labelgraph"
-    req_json["dataname"] = graphname
-    req_str = json.dumps(req_json)
-    requests.post(dataset_name, data=req_str, headers=json_header) 
-   
-    job_ids = []
-    for substack in substacks:
-        # spawn cluster job
-        job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
-
-    # wait for job completion
-    wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
-
-    # only compute probs if this was a segmentation run
-    if doprediction:
-        # handle prob calc (grab entire graph, create body lists, parse number of channels from ILP)
-        r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + graphname + "/subgraph") 
-        complete_graph = r.json()
+        dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
+        req_json = {}
+        req_json["typename"] = "labelgraph"
+        req_json["dataname"] = graphname
+        req_str = json.dumps(req_json)
+        requests.post(dataset_name, data=req_str, headers=json_header) 
        
-        # find channels from ILP
-
-        # retrieve all vertices
-        import random
-        vertices = complete_graph["Vertices"]
-        random.shuffle(vertices)
-        incr = len(vertices) / len(substacks) + 1
-        start = 0
-
         job_ids = []
         for substack in substacks:
-            # choose random set of vertices
-            # spawn cluster job for computing probs
-            job_ids.append(substack.launch_compute_probs(cluster_session, options, vertices[start:start+incr], graphname))
-            #time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
-            start += incr
-            if len(job_ids) == 10:
+            # spawn cluster job
+            job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
+
+        # wait for job completion
+        wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
+
+        # only compute probs if this was a segmentation run
+        if doprediction:
+            # handle prob calc (grab entire graph, create body lists, parse number of channels from ILP)
+            r = requests.get(options.dvidserver + "/api/node/" + options.uuid + "/" + graphname + "/subgraph") 
+            complete_graph = r.json()
+           
+            # find channels from ILP
+
+            # retrieve all vertices
+            import random
+            vertices = complete_graph["Vertices"]
+            random.shuffle(vertices)
+            incr = len(vertices) / len(substacks) + 1
+            start = 0
+
+            job_ids = []
+            for substack in substacks:
+                # choose random set of vertices
+                # spawn cluster job for computing probs
+                job_ids.append(substack.launch_compute_probs(cluster_session, options, vertices[start:start+incr], graphname))
+                #time.sleep(10) # not sure why I need to delay this but it is taking a long time so there must be a lot of contention 
+                start += incr
+                if len(job_ids) == 10:
+                    wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
+                    job_ids = []
+
+            if len(job_ids) > 0: 
+                # wait for job completion
                 wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
-                job_ids = []
-
-        if len(job_ids) > 0: 
-            # wait for job completion
-            wait_for_jobs(cluster_session, job_ids, message, "compute-prob")
-
 
     # calculate time
     total_time = time.time() - start_time

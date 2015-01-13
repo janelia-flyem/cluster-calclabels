@@ -12,5 +12,5 @@ setup(name = "CalcLabelOrchestration",
     packages = ['orchestration'],
     package_data = {},
     install_requires = [ ],
-    scripts = ["bin/commit_labels", "bin/calclabels", "bin/calclabels_cluster", "bin/stitch_labels"]
+    scripts = ["bin/commit_labels", "bin/remap_labels", "bin/calclabels", "bin/calclabels_cluster", "bin/stitch_labels"]
 )
