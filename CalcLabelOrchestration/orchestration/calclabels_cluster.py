@@ -7,6 +7,7 @@ import drmaa
 import time
 import numpy
 import h5py
+import traceback
 
 """
 Basic Algorithm
@@ -285,8 +286,12 @@ class Substack:
         jt.joinFiles = True
         jt.outputPath = ":" + self.session_location + "/computegraph.out"
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
         args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", labelvolname, "--graph-name", graphname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
+
+        if options.roi != "":
+            args.append("--roi")
+            args.append(options.roi)
 
         if docomputeprob:
             # program will handle the fact that there is a uniform buffer in the prediction file
@@ -390,7 +395,7 @@ class Substack:
         jt.outputPath = ":" + self.session_location + "/commit.out"
 
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 2 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
         jt.args = [self.session_location + "/configw.json"]
         return cluster_session.runJob(jt)
 
@@ -670,14 +675,15 @@ def orchestrate_labeling(options, message):
         dataset_name = options.dvidserver + "/api/repo/"+ options.uuid + "/instance"
         
         req_json = {}
-        req_json["typename"] = "labels64"
+        req_json["typename"] = "labelblk"
         req_json["dataname"] = options.labelname
         req_str = json.dumps(req_json)
         requests.post(dataset_name, data=req_str, headers=json_header) 
         
         # launch relabel and write jobs and wait 
         config = {}
-        
+  
+
         # write mappings to one sport and then reference in remap job
         #config["remap"] = body2body 
         remapdata = {}
@@ -697,6 +703,7 @@ def orchestrate_labeling(options, message):
             job_ids.append(substack.launch_remap_job(cluster_session, config, options.session_location))
         wait_for_jobs(cluster_session, job_ids, message, "remap-labels: " + str(job_num) + " of " + str(len(substacks)))
 
+
         # commit
         job_ids = []
         job_num = 0
@@ -711,7 +718,7 @@ def orchestrate_labeling(options, message):
 
         if len(job_ids) > 0: 
             wait_for_jobs(cluster_session, job_ids, message, "write-labels: " + str(job_num) + " of " + str(len(substacks)))
-        
+       
         # wait for job completion
         #wait_for_jobs(cluster_session, job_ids, message, "write-labels")
         # write status: 'stitched watershed'
@@ -752,9 +759,13 @@ def orchestrate_labeling(options, message):
         for substack in substacks:
             # spawn cluster job
             job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
+            if len(job_ids) == 100:
+                wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
+                job_ids = []
 
         # wait for job completion
-        wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
+        if len(job_ids) > 0: 
+            wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
 
         # only compute probs if this was a segmentation run
         if doprediction:
@@ -808,5 +819,6 @@ def execute(args):
         orchestrate_labeling(options, message)
     except Exception, e:
         print e
+        print traceback.print_exc(file=sys.stdout)
         message.write_status("FAIL: " + str(e))
 

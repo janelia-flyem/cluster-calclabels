@@ -2,16 +2,16 @@
     "remote-machine": "login1",
     "remote-user": "plazas",
     "remote-environment": [
-        "PATH=/groups/scheffer/home/plazas/segmentation_system/buildem3/bin:/usr/bin",
-        "PYTHONPATH=/groups/scheffer/home/plazas/segmentation_system/buildem3/lib",
-        "LD_LIBRARY_PATH=/usr/local/gcc/lib64:groups/scheffer/home/plazas/segmentation_system/buildem3/lib",
+        "PATH=/groups/scheffer/home/plazas/segmentation_system2/buildem/bin:/usr/bin",
+        "PYTHONPATH=/groups/scheffer/home/plazas/segmentation_system2/buildem/lib",
+        "LD_LIBRARY_PATH=/usr/local/gcc/lib64:groups/scheffer/home/plazas/segmentation_system2/buildem/lib",
         "LAZYFLOW_THREADS=4",
         "LAZYFLOW_TOTAL_RAM_MB=30000",
         "DRMAA_LIBRARY_PATH=/sge/current/lib/lx-amd64/libdrmaa.so",
-        "SGE_QMASTER_PORT=6464",
-        "SGE_EXECD_PORT=6463",
+        "SGE_QMASTER_PORT=6454",
+        "SGE_EXECD_PORT=6453",
         "SGE_CELL=default",
-        "SGE_ROOT=/sge/8.1.4",
-        "SGE_CLUSTER_NAME=Janelia1"
+        "SGE_ROOT=/sge/current",
+        "SGE_CLUSTER_NAME=janelia"
     ]
 }

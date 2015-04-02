@@ -243,9 +243,12 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	json.Unmarshal([]byte(calclabelsSchema), &schema_data)
 
 	// validate json schema
-	schema, err := gojsonschema.NewJsonSchemaDocument(schema_data)
-	validationResult := schema.Validate(json_data)
-	if !validationResult.IsValid() {
+	loader := gojsonschema.NewGoLoader(schema_data)
+        schema, err := gojsonschema.NewSchema(loader)
+        
+        stringloader := gojsonschema.NewGoLoader(json_data)
+	validationResult, _ := schema.Validate(stringloader)
+	if !validationResult.Valid() {
 		badRequest(w, "JSON did not pass validation")
 		err = fmt.Errorf("JSON did not pass validation")
 		return
