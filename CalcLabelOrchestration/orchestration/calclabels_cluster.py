@@ -130,7 +130,7 @@ class Substack:
     # find body mappings
     def find_mappings(self, merge_list, substacks):
         if self.id_offset is None:
-            raise "No offset specified"
+            raise Exception("No offset specified")
        
         for i in range(self.num_stitch):
             jname = self.session_location + "/merge_" + str(i) + ".json"
@@ -223,7 +223,8 @@ class Substack:
         jt.outputPath = ":" + self.session_location + "/watershed.out"
 
         # use current environment, use all slots for Ilastik
-        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
+        # dvid=true
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V -l dvid=true"
         jt.args = [self.session_location, "--config-file", self.session_location + "/config.json"]
         return cluster_session.runJob(jt)
 
@@ -285,8 +286,9 @@ class Substack:
         jt.remoteCommand = computeGraph 
         jt.joinFiles = True
         jt.outputPath = ":" + self.session_location + "/computegraph.out"
-        # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
+        # use current environment
+        # dvid=true
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V -l dvid=true"
         args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--label-name", labelvolname, "--graph-name", graphname, "--x", str(self.roi.x1), "--y", str(self.roi.y1), "--z", str(self.roi.z1), "--xsize", str(self.roi.x2-self.roi.x1), "--ysize", str(self.roi.y2-self.roi.y1), "--zsize", str(self.roi.z2-self.roi.z1)]
 
         if options.roi != "":
@@ -331,7 +333,6 @@ class Substack:
         # use current environment, need only one slot
         jt.nativeSpecification = "-pe batch 1 -j y -o /dev/null -b y -cwd -V"
         jt.args = ["--dvid-server", options.dvidserver, "--uuid", options.uuid, "--bodylist-name", self.session_location + "/body_list.json", "--graph-name", graphname, "--classifier-file", options.graphclassifier, "--num-chans", str(num_chans), "--dumpfile", "1"]
-        print jt.args
 
         return cluster_session.runJob(jt)
 
@@ -395,7 +396,7 @@ class Substack:
         jt.outputPath = ":" + self.session_location + "/commit.out"
 
         # use current environment, need only one slot
-        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V"
+        jt.nativeSpecification = "-pe batch 4 -j y -o /dev/null -b y -cwd -V -l dvid=true"
         jt.args = [self.session_location + "/configw.json"]
         return cluster_session.runJob(jt)
 
@@ -416,7 +417,12 @@ class Message:
                 headers={'content-type': 'text/html'})
 
 def wait_for_jobs(cluster_session, job_ids, message, job_desc):
-    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, True)
+    cluster_session.synchronize(job_ids, drmaa.Session.TIMEOUT_WAIT_FOREVER, False)
+    for currjob in job_ids:
+        retval = cluster_session.wait(currjob, drmaa.Session.TIMEOUT_WAIT_FOREVER)
+        if retval.wasAborted or retval.hasCoreDump or retval.exitStatus != 0 or not retval.hasExited or retval.hasSignal:
+            raise Exception("JOB failure in " + job_desc)
+
     return
     
     completed = set()
@@ -543,6 +549,7 @@ def orchestrate_labeling(options, message):
                 
             substacks.append(Substack(substackid, roi, options.overlap_size/2))
             substackid += 1
+           
             #if substackid == 4:
             #    break
 
@@ -583,12 +590,13 @@ def orchestrate_labeling(options, message):
         for substack in substacks:
             if not synapseread:
                 substack.create_directory(options.session_location)
+
             # spawn cluster job -- return handler?
             job_num1 += 1
-            
             job_ids.append(substack.launch_label_job(cluster_session, config))
             
-            if len(job_ids) == 100: 
+            # might be a good change (using new -l dvid=true)
+            if len(job_ids) == 4000: 
                 wait_for_jobs(cluster_session, job_ids, message, "watershed: " + str(job_num1) + " of " + str(len(substacks)))
                 job_ids = []
             
@@ -623,7 +631,7 @@ def orchestrate_labeling(options, message):
                 if substacks[i].isoverlap(substacks[j]):
                     job_num += 1
                     job_ids.append(substacks[i].launch_stitch_job(substacks[j], cluster_session, options))
-                    if len(job_ids) == 10000: 
+                    if len(job_ids) == 9000: 
                         wait_for_jobs(cluster_session, job_ids, message, "stitch")
                         job_ids = []
         
@@ -635,6 +643,8 @@ def orchestrate_labeling(options, message):
         message.write_status("stitched labels") 
     
         # collect merges, relabels, etc
+        # ?! sets offset based on previous segmentation
+        #id_offset = 160000000
         id_offset = 0
         merge_list = []
         for substack in substacks:
@@ -677,13 +687,21 @@ def orchestrate_labeling(options, message):
         req_json = {}
         req_json["typename"] = "labelblk"
         req_json["dataname"] = options.labelname
+        req_json["Sync"] = options.labelname + "-labelvol"
         req_str = json.dumps(req_json)
         requests.post(dataset_name, data=req_str, headers=json_header) 
-        
+      
+        # create label vol type
+        req_json = {}
+        req_json["typename"] = "labelvol"
+        req_json["dataname"] = options.labelname + "-labelvol"
+        req_json["Sync"] = options.labelname
+        req_str = json.dumps(req_json)
+        requests.post(dataset_name, data=req_str, headers=json_header) 
+
         # launch relabel and write jobs and wait 
         config = {}
   
-
         # write mappings to one sport and then reference in remap job
         #config["remap"] = body2body 
         remapdata = {}
@@ -693,9 +711,12 @@ def orchestrate_labeling(options, message):
         foutremap.close()
 
         config["write-location"] = options.dvidserver + "/api/node/" + options.uuid + "/" + options.labelname + "/raw/0_1_2"
-        # roi working but disabled
-        #config["roi"] = options.roi
-        config["roi"] = "" # options.roi
+        # roi working
+        config["roi"] = options.roi
+        #config["roi"] = "" # options.roi
+        config["server"] = options.dvidserver
+        config["uuid"] = options.uuid
+        config["labelname"] = options.labelname
 
         # remap -- no DVID calls so can run a massive job
         job_ids = []
@@ -703,16 +724,16 @@ def orchestrate_labeling(options, message):
             job_ids.append(substack.launch_remap_job(cluster_session, config, options.session_location))
         wait_for_jobs(cluster_session, job_ids, message, "remap-labels: " + str(job_num) + " of " + str(len(substacks)))
 
-
         # commit
         job_ids = []
         job_num = 0
         for substack in substacks:
             # spawn cluster job
-            # ?! modify commit label script to not handle ROI if provided just an endpoint ??
             job_num += 1
             job_ids.append(substack.launch_write_job(cluster_session, config))
-            if len(job_ids) == 10: 
+
+            # setting -l dvid=true instead
+            if len(job_ids) == 4000: 
                 wait_for_jobs(cluster_session, job_ids, message, "write-labels: " + str(job_num) + " of " + str(len(substacks)))
                 job_ids = []
 
@@ -759,7 +780,8 @@ def orchestrate_labeling(options, message):
         for substack in substacks:
             # spawn cluster job
             job_ids.append(substack.launch_compute_graph(cluster_session, options, graphname, labelvolname, doprediction))
-            if len(job_ids) == 100:
+            # restrict with -l dvid=true
+            if len(job_ids) == 9000:
                 wait_for_jobs(cluster_session, job_ids, message, "compute-graph")
                 job_ids = []
 

@@ -16,6 +16,7 @@ jt.nativeSpecification = "-j y -o /dev/null -b y -cwd -V"
 
 # run python command for calclabels_cluster with the session as the argument
 jt.remoteCommand = "calclabels_cluster"
+jt.outputPath = ":" + sys.argv[1] + "/cluster.out"
 jt.args = [sys.argv[1]]
 
 # run on only one slot

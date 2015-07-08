@@ -20,7 +20,7 @@ const (
 	// Contain URI location for interface
 	interfacePath  = "/interface/"
 	calclabelsPath = "/calculation/"
-	classifierURI  = "classifiers/"
+	classifierURI  = "classifiers/key/"
 	annotationsURI  = "annotations/"
 	classifierName = "classifier.ilp"
 	agglomclassifierName = "agglomclassifier.xml"
@@ -387,7 +387,7 @@ func calcLabels(w http.ResponseWriter, json_data map[string]interface{}) {
 	}
 
 	// write status in key value on DVID
-	keyval_url := baseurl + segStatusURI + "/" + session_id
+	keyval_url := baseurl + segStatusURI + "/key/" + session_id
 	json_data["result-callback"] = keyval_url
 
 	// create segstatus uri (if not created) and write status

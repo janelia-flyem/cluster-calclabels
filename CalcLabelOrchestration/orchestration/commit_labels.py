@@ -5,6 +5,8 @@ import struct
 import json
 import requests
 import time
+import os
+import tempfile
 
 def execute(argv):
     parser = argparse.ArgumentParser(description="Writes h5 to DVID")
@@ -13,6 +15,8 @@ def execute(argv):
 
     json_data = json.load(open(args.config_file))
 
+    # ?! temporary unzip of gzip file
+    #os.system("gunzip " + json_data["labels"] + ".gz")
     hfile = h5py.File(json_data["labels"], 'r')
     labels = numpy.array(hfile['stack']).astype(numpy.uint64)
 
@@ -49,6 +53,7 @@ def execute(argv):
     bbox1 = json_data["bbox1"]
     bbox2 = json_data["bbox2"]
 
+
     sizes = [i - j for i, j in zip(bbox2, bbox1)]
     write_location += "/{sx}_{sy}_{sz}/{x}_{y}_{z}".format(sx=sizes[0],
             sy=sizes[1], sz=sizes[2], x=bbox1[0], y=bbox1[1], z=bbox1[2])
@@ -62,7 +67,17 @@ def execute(argv):
     labels = labels.ravel().copy()
     labels_data = '<' + 'Q'*len(labels)
     labels_bin = struct.pack(labels_data, *labels)
-   
+ 
+
+    #"""
+    # reopening the file should work on linux based systems
+    binaryfile = tempfile.NamedTemporaryFile()
+    binaryfile.write(labels_bin)
+    os.system("dvid_load_labels " + json_data["server"] + " " + json_data["uuid"] + " " + json_data["labelname"] + " " + str(bbox1[0]) + " " + str(bbox1[1]) + " " + str(bbox1[2]) + " " + str(sizes[0]) + " " + str(sizes[1]) + " " + str(sizes[2]) + " " + binaryfile.name +  " " + roi)
+    binaryfile.close()
+
+    """
+    
     rfile = args.config_file + ".response"
 
     completed = False
@@ -93,4 +108,5 @@ def execute(argv):
     except Exception, e:
         fout = open(rfile, 'w')
         fout.write("Exception: "+str(e)+ " num tries" + str(iter1))
-    
+
+    """

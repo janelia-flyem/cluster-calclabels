@@ -2,7 +2,7 @@
     "remote-machine": "login1",
     "remote-user": "plazas",
     "remote-environment": [
-        "PATH=/groups/scheffer/home/plazas/segmentation_system2/buildem/bin:/usr/bin",
+        "PATH=/groups/scheffer/home/plazas/segmentation_system2/buildem/bin:/groups/scheffer/home/plazas/segmentation_system2/buildem_libdvidnew/bin:/usr/bin",
         "PYTHONPATH=/groups/scheffer/home/plazas/segmentation_system2/buildem/lib",
         "LD_LIBRARY_PATH=/usr/local/gcc/lib64:groups/scheffer/home/plazas/segmentation_system2/buildem/lib",
         "LAZYFLOW_THREADS=4",
